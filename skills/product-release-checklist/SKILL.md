@@ -33,6 +33,8 @@ asset specs and readiness gates are defined once in `studio/model.mjs`: read it 
 | Plan measurement | launch-measure (plan, baseline) | `measure`, notes on items `metric`/`baseline` |
 | Write readout | launch-measure (readouts) | `measure.stages.*.a7/a30/a90`, `measure.channels`, `measure.readouts` |
 | Run retro | launch-retro | `retro`, optionally `custom` items |
+| Sync to Linear | launch-linear-sync (Composio) | `sync.linear` via `studio.mjs link`; item statuses pulled from Linear |
+| Publish team launch plan | export, then publish `team-plan.html` as an Artifact | nothing in the launch |
 | Publish share link | the share command | nothing in the launch |
 
 ## Launch schema
@@ -63,9 +65,18 @@ asset specs and readiness gates are defined once in `studio/model.mjs`: read it 
                "channels": [{ "channel": "", "exposed": "", "discovered": "", "activated": "", "cost": "" }],
                "readouts": { "7|30|90": { "verdict": "on_track|behind|ahead|", "recommendation": "double_down|iterate|hold|sunset|", "notes": "", "at": "" } } },
   "feedback": { "at": "ISO", "summary": "", "items": [{ "severity": "blocker|high|medium|info", "area": "", "text": "", "fix": "", "owner": "ROLE", "item": "<item id>", "resolved": false }] },
+  "people": [{ "id": "p_…", "name": "Sam Lee", "email": "sam@company.com", "title": "PMM", "capacity": "50%", "linearUserId": "" }],
+  "staffing": { "PMM": "p_…", "DRI": "p_…" },     // role → person id; items inherit the owner from their role
+  "sync": { "linear": { "teamId": "", "teamName": "", "projectId": "", "projectUrl": "", "syncedAt": "", "pulledAt": "",
+                        "milestones": { "<phase>": "<milestone id>" },
+                        "issues": { "<item id>": { "id": "", "identifier": "GRO-12", "url": "", "state": "", "syncedAt": "" } } } },
   "retro": { "outcome": "", "worked": "", "didnt": "", "gaps": "", "benchmarks": "" }
 }
 ```
+
+An item's owner is `items.<id>.owner` if it names someone on `people` (by name or email). Otherwise it's the person
+`staffing` maps the item's role to. Setting the DRI role also sets `dri`. Don't write `sync.linear` by hand: use
+`studio.mjs link` so ids and pulled states merge correctly.
 
 Stage values are counts ("2100") or percentages ("12%"). Write them as strings.
 
@@ -82,7 +93,9 @@ Rules the studio enforces, so don't fight them:
 node <tools>/studio.mjs list                         # every launch: id, name, t0, tier, % done
 node <tools>/studio.mjs new "<name>" --t0 2026-11-17 # create a launch
 node <tools>/studio.mjs validate <id>                # schema errors, lint checks, readiness verdict
-node <tools>/studio.mjs export <id> [--out dir]      # report.html + Markdown pack
+node <tools>/studio.mjs export <id> [--out dir]      # report.html, team-plan.html, tasks.csv + Markdown pack
+node <tools>/studio.mjs sync-plan <id>               # Linear payload: project, milestones, issues with assignee emails
+node <tools>/studio.mjs link <id> <result.json>      # write Linear ids, user ids and pulled states back
 ```
 
 ## Company context

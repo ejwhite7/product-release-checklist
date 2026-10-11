@@ -1,6 +1,23 @@
 // The launch model: the checklist, the tiering rubric, the asset catalogue, dates, normalization, checks and readiness
 // gates. Shared by the studio (browser), the server/CLI (Node) and the exports, so there is one source of truth.
 
+export const ROLE_INFO = {
+	DRI: "Owns the launch end to end; runs go/no-go",
+	PMM: "Positioning, message house, announcement, enablement",
+	PM: "Scope, eligibility, rollout, in-app, changelog",
+	ENG: "Flag, instrumentation, rollout and rollback",
+	DESIGN: "First-run experience, visuals for assets",
+	WEB: "Landing page, site banner",
+	CONTENT: "Video, tutorials",
+	SOCIAL: "Founder, company and employee posts; creators; community",
+	PAID: "Audiences, creative, budgets, search",
+	LIFECYCLE: "Announcement email, nudges, winback",
+	SUPPORT: "KB, AI support bot, ticket review",
+	CS: "Key accounts and feature requesters",
+	DATA: "Metric, baseline, dashboard, readouts",
+	LEGAL: "Claims review, creator contracts",
+	FOUNDER: "Narrative, founder posts (approves, doesn't run)",
+};
 export const ROLES = ["DRI", "PMM", "PM", "ENG", "DESIGN", "WEB", "CONTENT", "SOCIAL", "PAID", "LIFECYCLE", "SUPPORT", "CS", "DATA", "LEGAL", "FOUNDER"];
 export const LAUNCH_STATUS = [["planning", "Planning"], ["building", "Building"], ["go", "Go"], ["launched", "Launched"], ["measuring", "Measuring"], ["closed", "Closed"]];
 export const ITEM_STATUS = [["todo", "To do"], ["doing", "In progress"], ["done", "Done"], ["waived", "Waived"], ["na", "N/A"]];
@@ -282,11 +299,23 @@ export function normalize(raw) {
 			summary: str(r.feedback?.summary, 4000),
 			items: arr(r.feedback?.items).slice(0, 60).map((f) => ({ severity: ["blocker", "high", "medium", "info"].includes(f?.severity) ? f.severity : "medium", area: str(f?.area, 60), text: str(f?.text, 1200), fix: str(f?.fix, 1200), owner: str(f?.owner, 60), item: str(f?.item, 64), resolved: bool(f?.resolved) })),
 		},
+		people: arr(r.people).filter((x) => x && x.id && (x.name || x.email)).slice(0, 60).map((x) => ({ id: str(x.id, 64), name: str(x.name, 120), email: str(x.email, 200).trim().toLowerCase(), title: str(x.title, 120), capacity: str(x.capacity, 40), linearUserId: str(x.linearUserId, 64) })),
+		staffing: Object.fromEntries(ROLES.map((k) => [k, arr(r.people).some((x) => x?.id && x.id === r.staffing?.[k]) ? r.staffing[k] : ""]).filter(([, v]) => v)),
+		sync: { linear: normalizeLinear(r.sync?.linear) },
 		retro: { outcome: str(r.retro?.outcome, 2000), worked: str(r.retro?.worked, 6000), didnt: str(r.retro?.didnt, 6000), gaps: str(r.retro?.gaps, 6000), benchmarks: str(r.retro?.benchmarks, 4000) },
 		createdAt: str(r.createdAt, 40),
 		updatedAt: str(r.updatedAt, 40),
 	};
 	return { launch, errors };
+}
+
+function normalizeLinear(x) {
+	const o = x ?? {};
+	const issues = {};
+	for (const [k, v] of Object.entries(o.issues ?? {})) if (v?.id) issues[str(k, 64)] = { id: str(v.id, 64), identifier: str(v.identifier, 40), url: str(v.url, 400), state: str(v.state, 40), syncedAt: str(v.syncedAt, 40) };
+	const milestones = {};
+	for (const [k, v] of Object.entries(o.milestones ?? {})) if (PHASES.some((p) => p.id === k) && v) milestones[k] = str(v, 64);
+	return { teamId: str(o.teamId, 64), teamName: str(o.teamName, 120), projectId: str(o.projectId, 64), projectUrl: str(o.projectUrl, 400), syncedAt: str(o.syncedAt, 40), pulledAt: str(o.pulledAt, 40), milestones, issues };
 }
 
 // --- Derived values ---
@@ -302,6 +331,14 @@ export function tierOf(l) {
 // Until the launch is scored, show the T1 superset so nothing is hidden.
 export const effectiveTier = (l) => tierOf(l) ?? 1;
 
+// Who's accountable for an item: an explicit owner that names someone on the roster, else whoever is staffed on its role.
+export const personById = (l, id) => l.people.find((p) => p.id === id) ?? null;
+export function ownerOf(l, role, owner = "") {
+	const o = owner.trim().toLowerCase();
+	if (o) return l.people.find((p) => p.name.toLowerCase() === o || p.email === o) ?? null;
+	return personById(l, l.staffing[role]);
+}
+
 export function itemsFor(l) {
 	const tier = effectiveTier(l);
 	const custom = l.custom.map((c) => ({ ...c, tiers: [1, 2, 3], custom: true }));
@@ -313,7 +350,8 @@ export function itemsFor(l) {
 			const due = st.due || planned;
 			const open = !["done", "waived", "na"].includes(st.status);
 			const gate = i.gate === true || (i.gate === 1 && tier === 1);
-			return { ...i, ...st, def: i, gate, planned, due, open, overdue: open && due < today(), noEvidence: st.status === "done" && !st.evidence.trim() };
+			const person = ownerOf(l, i.role, st.owner);
+			return { ...i, ...st, def: i, gate, planned, due, open, overdue: open && due < today(), noEvidence: st.status === "done" && !st.evidence.trim(), person, ownerName: person?.name || st.owner || "", issue: l.sync.linear.issues[i.id] ?? null };
 		})
 		.sort((a, b) => PHASES.findIndex((p) => p.id === a.phase) - PHASES.findIndex((p) => p.id === b.phase) || a.due.localeCompare(b.due));
 }
@@ -353,6 +391,15 @@ export function checks(l, others = []) {
 		const ot = o.tier ?? 3;
 		if (ot <= 2 && (tier ?? 1) <= 2 && Math.abs(daysBetween(o.t0, l.t0)) <= 7) add("warn", "Calendar", `“${o.name}” (T${ot}) launches ${fmtDate(o.t0)}, within 7 days.`, "calendar");
 	}
+	const w = workload(l);
+	const unstaffed = w.roles.filter((r) => !r.person && r.open);
+	if (l.people.length && unstaffed.length) add("warn", "Staffing", `Nobody staffed for ${unstaffed.map((r) => `${r.role} (${r.open})`).join(", ")}.`);
+	else if (!l.people.length && (tier ?? 1) <= 2) add("info", "Staffing", "Add the team on the Staffing tab so every item has a named owner.");
+	for (const p of w.people) {
+		if (w.openTotal >= 10 && p.open / w.openTotal > 0.4 && p.roles.length > 1) add("warn", "Staffing", `${p.name} owns ${p.open} of ${w.openTotal} open items (${p.roles.join(", ")}). Spread the load.`);
+		if (p.peakWeek && p.peakWeek.count >= 8) add("warn", "Staffing", `${p.name} has ${p.peakWeek.count} items due the week of ${fmtDate(p.peakWeek.week)}.`);
+	}
+	if (l.sync.linear.projectId && l.people.some((p) => w.people.find((x) => x.id === p.id)?.open && !p.email)) add("info", "Staffing", "Some owners have no email, so their Linear issues will be unassigned.");
 	const p = progress(l);
 	for (const i of p.items) {
 		if (i.noEvidence) add("warn", "Checklist", `Marked done without evidence: ${i.text}`, i.id);
@@ -379,6 +426,34 @@ export function readiness(l) {
 	const verdict = gates.some((g) => !g.ok) || redTeam.length || blockers.length ? "no-go" : waived.length ? "go-waivers" : "go";
 	return { gates, blockers, waived, redTeam, verdict };
 }
+// Per-person load across this tier's checklist and assets, plus roles the plan needs that nobody holds.
+export function workload(l) {
+	const items = itemsFor(l);
+	const assets = assetsFor(l);
+	const week = (d) => addDays(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
+	const people = l.people.map((p) => {
+		const mine = items.filter((i) => i.person?.id === p.id);
+		const open = mine.filter((i) => i.open);
+		const weeks = {};
+		for (const i of open) weeks[week(i.due)] = (weeks[week(i.due)] ?? 0) + 1;
+		const peak = Object.entries(weeks).sort((a, b) => b[1] - a[1])[0] ?? null;
+		return {
+			...p,
+			roles: ROLES.filter((r) => l.staffing[r] === p.id),
+			items: mine,
+			open: open.length,
+			done: mine.length - open.length,
+			overdue: open.filter((i) => i.overdue).length,
+			assets: assets.filter((a) => (a.owner ? a.owner.toLowerCase() === p.name.toLowerCase() : l.staffing[a.role] === p.id)).length,
+			peakWeek: peak ? { week: peak[0], count: peak[1] } : null,
+		};
+	});
+	const needed = [...new Set(items.map((i) => i.role))];
+	const roles = needed.map((r) => ({ role: r, person: personById(l, l.staffing[r]), items: items.filter((i) => i.role === r).length, open: items.filter((i) => i.role === r && i.open).length }));
+	const unassigned = items.filter((i) => !i.person);
+	return { people, roles, unassigned, openTotal: items.filter((i) => i.open).length };
+}
+
 export const VERDICT = { go: "GO", "go-waivers": "GO WITH WAIVERS", "no-go": "NO-GO" };
 
 // A short listing row, used by the portfolio and collision checks.

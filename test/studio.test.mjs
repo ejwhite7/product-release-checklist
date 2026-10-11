@@ -106,3 +106,70 @@ test("server: save with version check, request queue, and hook delivers once", a
 		srv.kill();
 	}
 });
+
+import { workload, ownerOf } from "../studio/model.mjs";
+import { applyLinearResult, linearPayload, renderTasksCsv, renderTeamPlan } from "../studio/teamplan.mjs";
+
+const staffed = () => {
+	const { launch } = normalize({
+		id: "l_staff", name: "Smart invoices", t0: "2026-11-17", tier: { override: 2 },
+		people: [{ id: "p1", name: "Sam Lee", email: "SAM@x.com" }, { id: "p2", name: "Ana", email: "ana@x.com" }],
+		staffing: { DRI: "p1", PMM: "p1", ENG: "p2", BOGUS: "p1", DATA: "nobody" },
+		items: { events: { status: "todo", owner: "Sam Lee" } },
+	});
+	return launch;
+};
+
+test("staffing: roles resolve owners, explicit owners win, unknown roles and people are dropped", () => {
+	const l = staffed();
+	assert.equal(l.people[0].email, "sam@x.com");
+	assert.deepEqual(Object.keys(l.staffing).sort(), ["DRI", "ENG", "PMM"]);
+	assert.equal(ownerOf(l, "ENG").name, "Ana");
+	assert.equal(itemsFor(l).find((i) => i.id === "events").person.name, "Sam Lee", "explicit owner beats ENG staffing");
+	const w = workload(l);
+	assert.ok(w.roles.find((r) => r.role === "DATA" && !r.person));
+	assert.ok(w.unassigned.every((i) => !i.person));
+	assert.equal(w.people.find((p) => p.id === "p1").roles.join(), "DRI,PMM");
+	assert.match(checks(l).map((c) => c.text).join("\n"), /Nobody staffed for .*DATA/);
+});
+
+test("linear payload: one issue per open item, assignee emails, milestones per phase, idempotent keys", () => {
+	const l = staffed();
+	const p = linearPayload(l);
+	assert.equal(p.issues.length, itemsFor(l).filter((i) => i.open).length);
+	assert.equal(p.project.lead_email, "sam@x.com");
+	assert.ok(p.project.description.length <= 255);
+	assert.equal(p.issues.find((i) => i.key === "events").assignee_email, "sam@x.com");
+	assert.ok(p.milestones.every((m) => m.target_date && m.name));
+	assert.ok(p.issues.find((i) => i.key === "kb").priority === 2, "gates are high priority");
+});
+
+test("link: write-back records ids, matches users and pulls state into the checklist", () => {
+	const l = staffed();
+	const changed = applyLinearResult(l, {
+		teamId: "t1", projectId: "pr1", projectUrl: "https://linear.app/x/project/1",
+		issues: { kb: { id: "i1", identifier: "GRO-1", url: "https://linear.app/x/GRO-1" }, events: { id: "i2", identifier: "GRO-2", url: "u2" }, press: { id: "i3", identifier: "GRO-3", url: "u3" } },
+		people: { "SAM@x.com": "u-sam" },
+		pulled: { kb: { state: "completed" }, events: { state: "started" }, press: { state: "canceled" }, unknown: { state: "completed" } },
+	});
+	assert.equal(l.people[0].linearUserId, "u-sam");
+	assert.equal(l.items.kb.status, "done");
+	assert.equal(l.items.kb.evidence, "https://linear.app/x/GRO-1");
+	assert.equal(l.items.events.status, "doing");
+	assert.equal(l.items.press.status, "na");
+	assert.equal(changed.length, 3);
+	const again = linearPayload(normalize(l).launch);
+	assert.equal(again.project.existingId, "pr1");
+	assert.equal(again.issues.find((i) => i.key === "events").existing.id, "i2", "re-sync updates instead of duplicating");
+});
+
+test("team plan: per-person sections, unassigned section, CSV rows", () => {
+	const l = staffed();
+	const html = renderTeamPlan(l);
+	assert.match(html, /Sam Lee/);
+	assert.match(html, /Unassigned/);
+	assert.match(html, /data-check="kb"/);
+	const csv = renderTasksCsv(l).trim().split("\n");
+	assert.equal(csv.length, itemsFor(l).length + 1);
+	assert.match(csv[0], /^Owner,Email,Role/);
+});

@@ -220,3 +220,17 @@ dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top
 	.item { grid-template-columns: 1fr 1fr; } .item .txt { grid-column: 1 / -1; order: -1; }
 	#launchName { width: 140px; } .view { padding: 16px; }
 }
+
+/* Staffing */
+select.unstaffed { border-color: var(--warn); color: var(--warn); }
+.load { display: grid; gap: 8px; }
+.lrow { display: grid; grid-template-columns: 160px 1fr 140px; gap: 10px; align-items: center; cursor: pointer; padding: 4px 6px; margin: 0 -6px; }
+.lrow:hover { background: var(--accent-soft); }
+.lrow span { display: flex; flex-direction: column; font-size: 13px; line-height: 1.25; }
+.lrow small { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.lbar { position: relative; height: 14px; background: var(--line); }
+.lbar i { position: absolute; inset: 0 auto 0 0; background: var(--fg); }
+.lbar u { position: absolute; inset: 0 auto 0 0; background: var(--error); }
+.btnlink { display: inline-block; border: 1px solid var(--fg); padding: 6px 11px; font-family: var(--mono); font-size: 12px; text-decoration: none; }
+.btnlink:hover { background: var(--fg); color: var(--bg); }
+.item .txt small a { color: var(--accent-text); }

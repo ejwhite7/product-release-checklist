@@ -2,7 +2,7 @@
 // Readiness, Retro), plus the portfolio of every launch. Edits bind straight into the launch object and save after a
 // short pause. The server file is the source of truth: when its version changes underneath (Claude edited it), the
 // studio reloads it. Ask Claude queues a request that goes to Claude Code with the user's next message there.
-import { ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, RUBRIC, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
+import { ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -23,6 +23,7 @@ const store = {
 const TABS = [
 	["overview", "Overview"],
 	["brief", "Brief & tier"],
+	["staffing", "Staffing"],
 	["checklist", "Checklist"],
 	["messaging", "Messaging"],
 	["assets", "Assets"],
@@ -30,9 +31,9 @@ const TABS = [
 	["readiness", "Readiness"],
 	["retro", "Retro"],
 ];
-const ASK = { intake: "Fill brief from note", tier: "Score tier", messaging: "Write message house", assets: "Draft assets", review: "Red-team review", measure: "Plan measurement", readout: "Write readout", retro: "Run retro" };
-const TAB_ASK = { overview: "review", brief: "intake", checklist: "review", messaging: "messaging", assets: "assets", measure: "measure", readiness: "review", retro: "retro" };
-const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", role: "", show: "all", q: "" } };
+const ASK = { sync: "Sync to Linear", plan: "Publish team plan", intake: "Fill brief from note", tier: "Score tier", messaging: "Write message house", assets: "Draft assets", review: "Red-team review", measure: "Plan measurement", readout: "Write readout", retro: "Run retro" };
+const TAB_ASK = { overview: "review", staffing: "sync", brief: "intake", checklist: "review", messaging: "messaging", assets: "assets", measure: "measure", readiness: "review", retro: "retro" };
+const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" } };
 
 // --- Data ---
 async function api(path, opts = {}) {
@@ -150,7 +151,9 @@ function refreshSide() {
 	const c = checks(l, S.launches);
 	const p = progress(l);
 	const r = readiness(l);
-	const counts = { checklist: p.overdue ? [p.overdue, true] : null, readiness: [VERDICT[r.verdict] === "GO" ? "GO" : r.gates.filter((g) => !g.ok).length || "!", r.verdict === "no-go"], assets: [assetsFor(l).filter((a) => ["approved", "live"].includes(a.status)).length + "/" + assetsFor(l).length, false] };
+	const w = workload(l);
+	const unstaffed = w.roles.filter((x) => !x.person).length;
+	const counts = { staffing: l.people.length ? [unstaffed ? `${unstaffed} open` : `${l.people.length}`, unstaffed > 0] : null, checklist: p.overdue ? [p.overdue, true] : null, readiness: [VERDICT[r.verdict] === "GO" ? "GO" : r.gates.filter((g) => !g.ok).length || "!", r.verdict === "no-go"], assets: [assetsFor(l).filter((a) => ["approved", "live"].includes(a.status)).length + "/" + assetsFor(l).length, false] };
 	$("#tabs").innerHTML = TABS.map(([k, label]) => `<button data-tab="${k}" class="${S.tab === k ? "on" : ""}">${label}${counts[k] ? `<span class="count ${counts[k][1] ? "bad" : ""}">${counts[k][0]}</span>` : ""}</button>`).join("");
 	$("#checks").innerHTML = c.length ? `<ul class="chk">${c.map((x) => `<li class="sev-${x.severity}" data-goto="${esc(x.item ?? "")}" data-area="${esc(x.area)}"><b>${esc(x.area)}</b>${esc(x.text)}</li>`).join("")}</ul>` : `<p class="allclear">✓ No open checks.</p>`;
 	renderAsk();
@@ -168,7 +171,7 @@ function renderAsk() {
 }
 
 // --- Views ---
-const VIEWS = { overview: viewOverview, brief: viewBrief, checklist: viewChecklist, messaging: viewMessaging, assets: viewAssets, measure: viewMeasure, readiness: viewReadiness, retro: viewRetro };
+const VIEWS = { overview: viewOverview, staffing: viewStaffing, brief: viewBrief, checklist: viewChecklist, messaging: viewMessaging, assets: viewAssets, measure: viewMeasure, readiness: viewReadiness, retro: viewRetro };
 
 function timeline(l, items) {
 	const from = -30, to = 30, span = to - from;
@@ -261,15 +264,17 @@ function viewChecklist() {
 	const p = progress(l);
 	const f = S.f;
 	const q = f.q.toLowerCase();
-	const shown = p.items.filter((i) => (!f.phase || i.phase === f.phase) && (!f.role || i.role === f.role || i.owner === f.role) && (f.show === "all" || (f.show === "open" && i.open) || (f.show === "overdue" && i.overdue) || (f.show === "gates" && i.gate)) && (!q || `${i.text} ${i.owner} ${i.role}`.toLowerCase().includes(q)));
-	const owners = [...new Set([l.dri, ...Object.values(l.items).map((x) => x.owner)].filter(Boolean))];
+	const who = (i) => !f.who || (f.who === "unassigned" ? !i.person : f.who.startsWith("p:") ? i.person?.id === f.who.slice(2) : i.role === f.who.slice(2));
+	const shown = p.items.filter((i) => (!f.phase || i.phase === f.phase) && who(i) && (f.show === "all" || (f.show === "open" && i.open) || (f.show === "overdue" && i.overdue) || (f.show === "gates" && i.gate)) && (!q || `${i.text} ${i.owner} ${i.role}`.toLowerCase().includes(q)));
+	const owners = [...new Set([...l.people.map((x) => x.name), l.dri, ...Object.values(l.items).map((x) => x.owner)].filter(Boolean))];
 	const roles = [...new Set(p.items.map((i) => i.role))];
+	const whoOpts = [["", "Everyone"], ...l.people.map((x) => [`p:${x.id}`, x.name || x.email]), ["unassigned", "Unassigned"], ...roles.map((r) => [`r:${r}`, `Role: ${r}`])];
 	return `<h2>Checklist <small>${p.done}/${p.total} done · tier ${tierOf(l) ? `T${tierOf(l)}` : "unscored (showing T1)"} · due dates count back from T-0 ${fmtDate(l.t0)}</small></h2>
 	<p class="lede">Done means there's an evidence link. Items marked done without one count as open. Clear a due date to return it to the plan.</p>
 	<div class="filters">
 		<div class="seg">${[["all", "All"], ["open", "Open"], ["overdue", "Overdue"], ["gates", "Gates"]].map(([k, lab]) => `<button data-act="show" data-v="${k}" class="${f.show === k ? "on" : ""}">${lab}</button>`).join("")}</div>
 		<select data-filter="phase"><option value="">All phases</option>${opt(PHASES.map((x) => [x.id, x.label]), f.phase)}</select>
-		<select data-filter="role"><option value="">All owners</option>${opt(roles.map((r) => [r, r]), f.role)}</select>
+		<select data-filter="who">${opt(whoOpts, f.who)}</select>
 		<input data-filter="q" placeholder="Search" value="${esc(f.q)}" style="width:180px">
 	</div>
 	<datalist id="owners">${[...owners, ...ROLES].map((o) => `<option value="${esc(o)}">`).join("")}</datalist>
@@ -287,12 +292,40 @@ function itemRow(i) {
 	const d = daysBetween(S.launch.t0, i.due);
 	return `<div class="item st-${i.status} ${i.overdue ? "late" : ""}" id="it-${i.id}">
 		<select class="stsel" data-v="${i.status}" data-item="${i.id}" data-f="status" data-rerender>${opt(ITEM_STATUS, i.status)}</select>
-		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : ""}<small>${esc(i.role)} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.noEvidence ? ' · <span class="v-go-waivers">needs evidence</span>' : ""}</small></div>
-		<input list="owners" data-item="${i.id}" data-f="owner" value="${esc(i.owner)}" placeholder="${esc(i.role)}">
+		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : ""}<small>${esc(i.role)}${i.person && !i.owner ? ` → ${esc(i.person.name)}` : ""} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.issue ? ` · <a href="${esc(i.issue.url)}" target="_blank" rel="noopener">${esc(i.issue.identifier || "Linear")}</a>` : ""}${i.noEvidence ? ' · <span class="v-go-waivers">needs evidence</span>' : ""}</small></div>
+		<input list="owners" data-item="${i.id}" data-f="owner" value="${esc(i.owner)}" placeholder="${esc(i.person?.name || i.role)}" title="Leave blank to use whoever is staffed on ${esc(i.role)}">
 		<input type="date" class="due ${i.overdue ? "late" : ""}" data-item="${i.id}" data-f="due" data-rerender value="${esc(i.due)}">
 		<input class="ev ${i.noEvidence ? "miss" : ""}" data-item="${i.id}" data-f="evidence" value="${esc(i.evidence)}" placeholder="Evidence link">
 		<button class="ghost sm more" data-act="note" data-id="${i.id}" title="Note${i.status === "waived" ? " (waiver reason)" : ""}">${i.note ? "✎" : "…"}</button>
 		${S.notes.has(i.id) || (i.status === "waived" && !i.note) ? `<textarea class="note" rows="2" data-item="${i.id}" data-f="note" placeholder="${i.status === "waived" ? "Why the DRI waived this" : "Note"}">${esc(i.note)}</textarea>` : ""}
+	</div>`;
+}
+
+function viewStaffing() {
+	const l = S.launch;
+	const w = workload(l);
+	const ln = l.sync.linear;
+	const max = Math.max(1, ...w.people.map((p) => p.open));
+	const peopleOpts = (sel) => `<option value="">Unstaffed</option>${l.people.map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}`;
+	return `<h2>Staffing <small>who owns each role, and what that puts on their plate</small></h2>
+	<p class="lede">Staff a role and every checklist item for it gets that person as owner, unless an item names someone else. The team plan and the Linear sync assign tasks from this. Emails must match their Linear account.</p>
+	<div class="card"><h3 style="margin-top:0">Team <small>${l.people.length} people</small></h3>
+		<table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Capacity</th><th>Roles</th><th>Open</th><th>Linear</th><th></th></tr></thead><tbody>
+		${l.people.map((p, i) => { const x = w.people.find((y) => y.id === p.id); return `<tr><td>${inp(`people.${i}.name`, "Name")}</td><td>${inp(`people.${i}.email`, "name@company.com", 'type="email"')}</td><td>${inp(`people.${i}.title`, "Title")}</td><td style="width:90px">${inp(`people.${i}.capacity`, "e.g. 50%")}</td><td class="mono">${esc(x.roles.join(", ")) || "—"}</td><td class="mono">${x.open}${x.overdue ? ` <span class="v-no-go">(${x.overdue} late)</span>` : ""}</td><td class="mono">${p.linearUserId ? "✓ matched" : "—"}</td><td><button class="ghost sm" data-act="rmPerson" data-id="${p.id}" title="Remove">✕</button></td></tr>`; }).join("")}
+		<tr><td colspan="8"><button class="sm" data-act="addPerson">+ Add person</button></td></tr></tbody></table>
+	</div>
+	<div class="grid2">
+		<div class="card"><h3 style="margin-top:0">Roles this ${tierOf(l) ? `T${tierOf(l)}` : "launch"} needs <small>${w.roles.filter((r) => r.person).length}/${w.roles.length} staffed</small></h3>
+			<table class="tbl"><tbody>${w.roles.map((r) => `<tr><td style="width:110px"><b class="mono">${esc(r.role)}</b><div class="hint" style="white-space:normal">${esc(ROLE_INFO[r.role] ?? "")}</div></td><td><select data-staff="${r.role}" class="${r.person ? "" : "unstaffed"}">${peopleOpts(l.staffing[r.role])}</select></td><td class="mono" style="text-align:right">${r.open} open<br><span class="muted">${r.items} total</span></td></tr>`).join("")}</tbody></table>
+		</div>
+		<div class="card"><h3 style="margin-top:0">Workload <small>open items · click a person to see their checklist</small></h3>
+			${w.people.length ? `<div class="load">${w.people.map((p) => `<div class="lrow" data-who="p:${p.id}"><span><b>${esc(p.name || p.email)}</b><small>${esc(p.roles.join(" · ") || "no role")}${p.capacity ? ` · ${esc(p.capacity)}` : ""}</small></span><div class="lbar"><i style="width:${(100 * p.open) / max}%"></i>${p.overdue ? `<u style="width:${(100 * p.overdue) / max}%"></u>` : ""}</div><span class="mono">${p.open}${p.peakWeek ? `<small>peak ${p.peakWeek.count} wk of ${fmtDate(p.peakWeek.week).replace(/^\w+, /, "")}</small>` : ""}</span></div>`).join("")}</div>` : `<p class="hint">Add people on the left to see their load.</p>`}
+			${w.unassigned.length ? `<p class="small" style="margin-top:12px"><a href="#" data-who="unassigned" class="v-no-go">${w.unassigned.length} items have no owner →</a></p>` : ""}
+		</div>
+	</div>
+	<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
+		<p class="hint">Sync creates a Linear project for this launch (via Composio), with a milestone per phase and one issue per open task, assigned to its owner, with the due date. Re-syncing updates existing issues instead of duplicating them, and issues closed in Linear tick off here, with the issue as evidence.</p>
+		<div class="row">${ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : ""}<button class="primary" data-ask="sync">${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button><button data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="/api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div>
 	</div>`;
 }
 
@@ -485,14 +518,23 @@ function settingsDialog() {
 }
 function shareDialog() {
 	dialog(`<h2>Share “${esc(S.launch.name)}”</h2>
-	<p class="hint">The report shows the brief, tier, readiness, message house, checklist, assets and measurement on one page.</p>
+	<p class="hint">The team launch plan is the one to present: milestones, roles, and each person's tasks with due dates. The full report covers the brief, tier, readiness, message house, checklist and measurement.</p>
 	<div style="display:grid;gap:8px;margin-top:12px">
-		<button value="report">Open the report in a new tab</button>
+		<button value="plan">Open the team launch plan (who does what)</button>
+		<button value="csv">Download tasks CSV (owner, role, due, status)</button>
+		<button value="publishPlan">Publish the team plan as a private link (asks Claude)</button>
+		<button value="sync">Sync tasks to Linear (asks Claude, via Composio)</button>
+		<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">
+		<button value="report">Open the full launch report</button>
 		<button value="export">Export Markdown pack + report to the export folder</button>
 		<button class="primary" value="publish">Publish a private share link (asks Claude)</button>
 	</div><div class="actions"><button value="cancel" formnovalidate>Close</button></div>`, async (_, v) => {
 		await save();
 		if (v === "report") window.open(`/api/launches/${S.launch.id}/report.html`, "_blank");
+		if (v === "plan") window.open(`/api/launches/${S.launch.id}/team-plan.html`, "_blank");
+		if (v === "csv") location.href = `/api/launches/${S.launch.id}/tasks.csv`;
+		if (v === "publishPlan") await ask("plan");
+		if (v === "sync") await ask("sync");
 		if (v === "export") toast(`Exported to ${(await post(`/api/launches/${S.launch.id}/export`, {})).body.dir}`);
 		if (v === "publish") await ask("share");
 	});
@@ -509,12 +551,12 @@ async function ask(kind, assetIds) {
 }
 function goto(itemId, area) {
 	if (!itemId) {
-		S.tab = { Brief: "brief", Measure: "measure", Messaging: "messaging", Calendar: "brief", Checklist: "checklist" }[area] ?? S.tab;
+		S.tab = { Staffing: "staffing", Brief: "brief", Measure: "measure", Messaging: "messaging", Calendar: "brief", Checklist: "checklist" }[area] ?? S.tab;
 		return render();
 	}
 	if (!itemsFor(S.launch).some((i) => i.id === itemId)) return toast("That item isn't in this tier's checklist.");
 	S.tab = "checklist";
-	S.f = { phase: "", role: "", show: "all", q: "" };
+	S.f = { phase: "", who: "", show: "all", q: "" };
 	render();
 	const el = document.getElementById(`it-${itemId}`);
 	el?.scrollIntoView({ block: "center" });
@@ -574,6 +616,21 @@ const ACT = {
 		render();
 	},
 	draftOne: (el) => ask("assets", [el.dataset.id]),
+	addPerson: () => {
+		S.launch.people.push({ id: `p_${Date.now().toString(36)}`, name: "", email: "", title: "", capacity: "", linearUserId: "" });
+		markDirty();
+		render();
+		const inputs = document.querySelectorAll('[data-bind$=".name"][data-bind^="people."]');
+		inputs[inputs.length - 1]?.focus();
+	},
+	rmPerson: (el) => {
+		const id = el.dataset.id;
+		S.launch.people = S.launch.people.filter((p) => p.id !== id);
+		for (const [r, v] of Object.entries(S.launch.staffing)) if (v === id) delete S.launch.staffing[r];
+		markDirty();
+		render();
+	},
+	teamPlan: () => save().then(() => window.open(`/api/launches/${S.launch.id}/team-plan.html`, "_blank")),
 };
 
 document.addEventListener("click", (e) => {
@@ -590,6 +647,14 @@ document.addEventListener("click", (e) => {
 	const askBtn = t.closest("[data-ask]");
 	if (askBtn) return ask(askBtn.dataset.ask).catch((err) => toast(err.message));
 	if (t.closest("[data-ask-clear]")) return api("/api/request", { method: "DELETE" }).then(() => ((S.request = null), renderAsk()));
+	const wh = t.closest("[data-who]");
+	if (wh && S.launch) {
+		e.preventDefault();
+		S.f = { phase: "", who: wh.dataset.who, show: "all", q: "" };
+		S.tab = "checklist";
+		$("#stage").scrollTop = 0;
+		return render();
+	}
 	const g = t.closest("[data-goto]");
 	if (g && S.launch) return e.preventDefault(), goto(g.dataset.goto, g.dataset.area);
 	const o = t.closest("[data-open]");
@@ -621,6 +686,13 @@ function onField(e, commit) {
 		const st = assetState(el.dataset.asset);
 		st[el.dataset.f] = val;
 		if (el.dataset.f === "body") st.updatedBy = "";
+	} else if (el.dataset.staff) {
+		const role = el.dataset.staff;
+		if (val) S.launch.staffing[role] = val;
+		else delete S.launch.staffing[role];
+		if (role === "DRI") S.launch.dri = S.launch.people.find((p) => p.id === val)?.name ?? "";
+		markDirty();
+		return render();
 	} else if (el.dataset.filter) {
 		S.f[el.dataset.filter] = val;
 		if (commit || el.tagName === "SELECT") render();
@@ -631,7 +703,7 @@ function onField(e, commit) {
 		return render();
 	} else return;
 	markDirty();
-	if (commit && el.hasAttribute("data-rerender")) render();
+	if (commit && (el.hasAttribute("data-rerender") || /^people\.\d+\.(name|email)$/.test(el.dataset.bind ?? ""))) render();
 	else refreshSide();
 }
 document.addEventListener("input", (e) => onField(e, false));

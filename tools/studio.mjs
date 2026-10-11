@@ -6,6 +6,8 @@
 //
 // Usage: node tools/studio.mjs [--port 4730] [--open]
 //        node tools/studio.mjs list | new <name> [--t0 yyyy-mm-dd] | path <id> | validate <id|file> | export <id> [--out dir]
+//        node tools/studio.mjs sync-plan <id>          (the Linear project/milestones/issues payload, as JSON)
+//        node tools/studio.mjs link <id> <result.json>  (write Linear ids, assignees and pulled states back)
 //        Every form takes --home <dir> to keep launches somewhere other than ~/.product-release-checklist.
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
@@ -15,6 +17,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { ASSETS, checks, newLaunch, normalize, readiness, summary, tierOf, VERDICT, validDate } from "../studio/model.mjs";
 import { renderMarkdownPack, renderReport, REPORT_CSS } from "../studio/report.mjs";
+import { applyLinearResult, CHECK_SCRIPT, linearPayload, renderTasksCsv, renderTeamPlan, renderTeamPlanMarkdown, TEAM_PLAN_CSS } from "../studio/teamplan.mjs";
 
 const tools = dirname(fileURLToPath(import.meta.url));
 const studio = resolve(tools, "../studio");
@@ -101,9 +104,25 @@ ${renderReport(l)}
 <footer class="foot">Planned with Product Release Checklist by <a href="https://growthcast.app">GrowthCast</a> · exported ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</footer>
 </body></html>`;
 }
+const studioUrl = (l) => `http://127.0.0.1:${port}/#${l.id}`;
+export function exportTeamPlan(l) {
+	const tokens = readFileSync(join(studio, "tokens.css"), "utf8");
+	return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${l.name.replace(/[<&]/g, "")} · launch plan</title><meta name="description" content="Launch plan: milestones, team and roles, and who does what by when">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap">
+<style>${tokens}\n${TEAM_PLAN_CSS}</style></head>
+<body class="export">
+<header class="gc-bar"><span class="wordmark">GrowthCast</span><span class="product">Product Release Checklist · Launch plan</span></header>
+${renderTeamPlan(l)}
+<footer class="foot">Planned with Product Release Checklist by <a href="https://growthcast.app">GrowthCast</a> · exported ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</footer>
+<script>${CHECK_SCRIPT(l.id)}</script>
+</body></html>`;
+}
 function exportPack(l, out) {
 	mkdirSync(join(out, "assets"), { recursive: true });
-	const files = { ...renderMarkdownPack(l), "report.html": exportHtml(l) };
+	const files = { ...renderMarkdownPack(l), "report.html": exportHtml(l), "team-plan.html": exportTeamPlan(l), "team-plan.md": renderTeamPlanMarkdown(l), "tasks.csv": renderTasksCsv(l) };
 	for (const [f, body] of Object.entries(files)) writeFileSync(join(out, f), body);
 	return Object.keys(files).map((f) => join(out, f));
 }
@@ -122,6 +141,8 @@ const KIND = {
 	measure: ["Plan measurement", "Use the launch-measure skill (plan + baseline) on measure.*: activation definition, events (keep entry_point), targets per stage (t7, t30) with their basis in the note field of item \"metric\", guardrails, holdout. If an analytics MCP (PostHog, Amplitude, Mixpanel, BigQuery, Supabase…) is connected, query baselines into stages.*.baseline; otherwise write the queries into the \"baseline\" item's note."],
 	readout: ["Write readout", "Use the launch-measure skill to write the readout for the T+ window named in the note (default: the latest one due). Pull actuals into measure.stages.*.a7/a30/a90 and measure.channels from connected analytics; never invent numbers. Write measure.readouts.<7|30|90> = { verdict, recommendation, notes, at }."],
 	retro: ["Run retro", "Run the launch-retro skill: fill retro.* from the checklist history, readiness, feedback and readouts, plus the note. Propose checklist additions as new entries in custom[] only if the note or the user agrees."],
+	plan: ["Publish team launch plan", "Export with `node \"TOOLS/studio.mjs\" export ID`, read the team-plan.html it writes, and publish it as a private claude.ai Artifact (load the artifact-design skill first; keep the page as exported apart from what that skill requires; the per-task checkboxes stay per-viewer). Give the user the link, say it's private until they share it, and point out any unstaffed roles or overloaded people listed on the page."],
+	sync: ["Sync to Linear", "Follow the launch-linear-sync skill: get the payload with `node \"TOOLS/studio.mjs\" sync-plan ID`, use Composio's Linear tools to create or update the project, phase milestones and one issue per task (assigned by email, with due dates), pull the state of already-linked issues, and write everything back with `node \"TOOLS/studio.mjs\" link ID <result.json>`. Before the first sync of a launch, confirm the Linear team with the user."],
 	share: ["Publish share link", "Export the launch with `node \"TOOLS/studio.mjs\" export ID`, read the report.html it writes, and publish it as a private claude.ai Artifact (load the artifact-design skill first; keep the page as exported apart from what that skill requires). Give the user the link and say it's private until they share it. Mention the Markdown pack folder."],
 };
 function requestContext(r) {
@@ -163,6 +184,18 @@ const cli = {
 		const c = launch ? checks(launch, allLaunches().map(summary)) : [];
 		console.log(JSON.stringify({ ok: !errors.length, errors, readiness: launch ? VERDICT[readiness(launch).verdict] : null, checks: c.map((x) => `${x.severity} ${x.area}: ${x.text}`) }, null, 2));
 		process.exit(errors.length ? 1 : 0);
+	},
+	"sync-plan": () => {
+		const { launch } = loadLaunch(positional[1]);
+		console.log(JSON.stringify(linearPayload(launch, { studioUrl: studioUrl(launch) }), null, 2));
+	},
+	link: () => {
+		const { launch } = loadLaunch(positional[1]);
+		const res = readJson(positional[2] ?? "");
+		if (!res) throw fail(400, "link needs a result JSON file: { teamId, teamName, projectId, projectUrl, milestones, issues, people, pulled }");
+		const changed = applyLinearResult(launch, res);
+		const { launch: saved } = saveLaunch(launch);
+		console.log(JSON.stringify({ ok: true, linked: Object.keys(saved.sync.linear.issues).length, project: saved.sync.linear.projectUrl, changed }, null, 2));
 	},
 	export: () => {
 		const { launch } = loadLaunch(positional[1]);
@@ -230,7 +263,7 @@ export function serve(listenPort = port) {
 			if (route === "GET /api/launches") return send(res, 200, listLaunches());
 			if (route === "POST /api/launches") {
 				const { name, t0, from } = await json(req);
-				const base = from ? { ...structuredClone(loadLaunch(from).launch), ...newLaunch(name || "Copy", t0), items: {}, assets: {}, feedback: {}, retro: {} } : newLaunch(name || "Untitled launch", validDate(t0) ? t0 : undefined);
+				const base = from ? { ...structuredClone(loadLaunch(from).launch), ...newLaunch(name || "Copy", t0), items: {}, assets: {}, feedback: {}, retro: {}, sync: {} } : newLaunch(name || "Untitled launch", validDate(t0) ? t0 : undefined);
 				return send(res, 201, saveLaunch(base));
 			}
 			if (route === "GET /api/launches/:id" && parts.length === 3) return send(res, 200, loadLaunch(id));
@@ -246,6 +279,11 @@ export function serve(listenPort = port) {
 				return send(res, 200, { ok: true });
 			}
 			if (route === "GET /api/launches/:id/report.html") return send(res, 200, exportHtml(loadLaunch(id).launch), { "content-type": "text/html; charset=utf-8" });
+			if (route === "GET /api/launches/:id/team-plan.html") return send(res, 200, exportTeamPlan(loadLaunch(id).launch), { "content-type": "text/html; charset=utf-8" });
+			if (route === "GET /api/launches/:id/tasks.csv") {
+				const { launch } = loadLaunch(id);
+				return send(res, 200, renderTasksCsv(launch), { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${launch.slug}-tasks.csv"` });
+			}
 			if (route === "POST /api/launches/:id/export") {
 				const { launch } = loadLaunch(id);
 				const out = defaultOut(launch);
