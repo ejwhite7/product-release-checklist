@@ -1,24 +1,30 @@
 ---
 name: launch-readiness
-description: Run a go/no-go readiness review on a launch. Audits the checklist for incomplete items, missing evidence links, and overdue tasks, then red-teams the plan for rollout, measurement, audience, legal, and support gaps. Also gives a status summary across all active launches. Use at T-3, for "are we ready to launch", "launch status", or "what's blocking the launch".
-argument-hint: "[launch folder | all]"
+description: Run a go/no-go red-team review of a launch in the release checklist studio and write the findings it shows on the Readiness tab. Also gives a status summary across all launches. Use for "Red-team review" requests, at T-3, or for "are we ready to launch", "launch status", or "what's blocking the launch".
+argument-hint: "[launch | all]"
 ---
 
 # Launch Readiness
 
-## Status mode (`all` or no argument with several launches)
-Read `launches/calendar.md` and each active launch's `checklist.md`. Output one table:
-`Launch | Tier | T-0 | Days out | % complete | Overdue | Blockers`. Then flag date collisions.
+The studio already computes the verdict from three things: hard gates, open Phase 0–3 items, and unresolved red-team
+blockers (`readiness()` in `studio/model.mjs`). Your job is the part the model can't compute: judgment.
 
-## Readiness mode (one launch)
-1. **Checklist audit.** Parse `checklist.md`. Sort items into done-with-evidence, done-without-evidence (treat these as not done), overdue, and not started. Any unchecked item in Phase 0–3 counts as a **blocker** unless the DRI has written `WAIVED: <reason>` on it.
-2. **Red-team.** Delegate to the `launch-red-team` agent with the launch folder path, then merge what it finds.
-3. **Hard gates.** Any one of these failing means NO-GO:
-   - The feature isn't at the agreed rollout % for the announced audience
-   - The primary metric's events haven't been verified in production
-   - The KB article and support pack aren't live and shared with support
-   - The message house isn't approved
-   - (T1) Rollback comms aren't drafted
-4. **Verdict.** `GO`, `GO WITH WAIVERS` (list them), or `NO-GO` (list the blockers, each with an owner and the fastest path to clear it).
+## Status across launches (`all`)
+Run `studio.mjs list`, then validate each active launch. Reply with one table:
+`Launch | Tier | T-0 | Days out | % done | Overdue | Verdict | Top risk`. Then flag any date collisions.
 
-Write the result to `launches/<launch>/readiness-<date>.md` and update the Status line in `brief.md`.
+## Red-team one launch
+1. If the `launch-red-team` agent is available, delegate to it with the launch file path and the context file path. Otherwise do the review yourself, using that agent's failure-mode list (plugin `agents/launch-red-team.md`).
+2. Check the launch content as well as the checkbox state:
+   - assets that contradict the message house
+   - lifecycle with no exit on activation
+   - announcing to users who can't access the feature
+   - paid audiences with no consent or suppression
+   - KB and support pack missing
+   - no T+14 second wave
+   - banners with no expiry date
+3. Replace `feedback` with `{ at, summary, items }`:
+   - Severity is `blocker` only when launching as planned would cause real harm, such as users who can't access the feature, broken measurement, or a legal exposure. Unresolved blockers force NO-GO.
+   - Link each finding to its checklist `item` id where one fits, so the studio can jump to it.
+   - `summary` is the single biggest risk, in one sentence.
+4. Don't change checklist statuses. The DRI resolves or waives items in the studio.

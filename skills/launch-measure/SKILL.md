@@ -1,25 +1,38 @@
 ---
 name: launch-measure
-description: Set up and run feature adoption measurement for a launch. Covers the pre-launch baseline, event tracking plan, goal setting, holdout design, and T+7/T+30/T+90 readouts with funnel, channel contribution, holdout lift, and guardrails. Use for "set goals for this launch", "tracking plan", "how is the launch doing", "launch readout", or "feature adoption".
-argument-hint: "[launch folder] [plan | baseline | T+7 | T+30 | T+90]"
+description: Plan and read feature adoption measurement for a launch in the release checklist studio. Covers the activation definition, events, baselines, targets, guardrails, holdout, and the T+7/T+30/T+90 readouts. Use for "Plan measurement" or "Write readout" requests, or for "set launch goals", "tracking plan", "how is the launch doing", or "feature adoption".
+argument-hint: "[launch] [plan | baseline | T+7 | T+30 | T+90]"
 ---
 
 # Launch Measure
 
-## plan (T-30 → T-14)
-Complete `tracking-plan.md` with the PM and the data owner:
-1. **Activation.** Define it as the smallest repeatable action that delivers the feature's value within a time window. Reject definitions like "opened the feature". Propose 2–3 options and explain the tradeoffs.
-2. **Events.** List them with properties. The feature-open event must carry `entry_point`, because without it you can't attribute adoption to channels.
-3. **Targets.** Set them from comparable past launches when that data exists. Otherwise use benchmarks and label them as such. A reasonable starting heuristic for a well-promoted T1: 20–40% of eligible actives discover the feature by T+30, and 30–50% of those activate. Replace it with the client's own history after the first launch.
-4. **Guardrails and holdout.** Pick guardrails and size the holdout. Note that it needs an analyst to check whether the holdout is big enough for the effect size you expect.
+Works on `measure` in the launch JSON. The Measure tab shows the funnel (eligible → exposed → discovered → first use →
+activated → retained) with targets and actuals.
 
-## baseline (before T-0)
-If an analytics MCP is connected (PostHog, Amplitude, Mixpanel, BigQuery, Supabase, and so on), query the current behavior for the job this feature replaces over the trailing 4 weeks. If not, write the exact queries or insight definitions for someone to run. Record the results in the Baseline column.
+## Plan (before T-14)
+1. **`activation`.** Define it as the smallest repeatable action that delivers the value, within `window`. Reject "opened the feature". Offer 2–3 options in chat and pick the best.
+2. **`primary`.** Phrase it as activated users ÷ eligible users by T+30.
+3. **`events`.** Rename the placeholder `<slug>_core_action`. Keep `entry_point` on the feature-open event, because it's how adoption gets attributed to channels.
+4. **Targets (`stages.*.t7`, `t30`).**
+   - Base them on `launches/benchmarks.md` (in the export folder) from past launches.
+   - With no history, start from 20–40% of eligible users discovering the feature by T+30 for a well-promoted T1, and 30–50% of those activating.
+   - Write the basis in item `metric`'s `note`, labelled as a benchmark until there's real history.
+5. **`guardrails` and `holdout`.** Size the holdout and note in chat that an analyst should check it's big enough for the effect you expect.
+
+## Baseline
+If an analytics MCP is connected (PostHog, Amplitude, Mixpanel, BigQuery, Supabase…), query the trailing 4 weeks of
+the behaviour this feature replaces, and the eligible-user count, into `stages.*.baseline` and `eligibleCount`. If none
+is connected, write the exact queries or insight definitions into item `baseline`'s `note`.
 
 ## Readouts (T+7, T+30, T+90)
-Fill `templates/readout.md` into `launches/<launch>/readout-T+<n>.md`:
-- **T+7 pulse.** Exposure and discovery against target. Find the biggest drop-off stage and propose one fix per stage (for example: low exposure means the in-app targeting is wrong; low discovery means the CTA is weak; low first use means a first-run UX problem).
-- **T+30.** Activation against target, holdout lift (treated activation rate minus holdout activation rate, with a confidence interval), channel contribution by `entry_point` and UTM, cost per activation for paid, guardrails, and support themes.
-- **T+90.** 4-week retention and revenue (conversion, expansion, churn) of adopters vs a matched set of non-adopters. State plainly that this is correlational unless it comes from the holdout. Recommend whether to double down, iterate, hold, or sunset.
+Pull the actuals into `stages.*.a7` / `a30` / `a90` and `channels`. Never invent a number: leave the cell blank and put
+the missing query in the notes. Then write `readouts.<n>`:
+- **T+7:** exposure and discovery against target. Name the biggest drop-off stage and the fix for it.
+- **T+30:**
+  - activation against target
+  - holdout lift (treated activation rate minus holdout activation rate, with a confidence interval)
+  - cost per activation by channel
+  - guardrails and support themes
+- **T+90:** retention and revenue of adopters vs matched non-adopters. Say plainly that it's correlational unless it comes from the holdout.
 
-Pull data through connected MCPs where possible. Never invent numbers. Leave a cell blank and list the query needed to fill it.
+Set `verdict`, `recommendation` and `at`, and keep `notes` to the decisions and the reasons for them.

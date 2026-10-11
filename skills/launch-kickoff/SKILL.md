@@ -1,50 +1,46 @@
 ---
 name: launch-kickoff
-description: Start a new product launch with the GrowthCast Product Release Checklist. Runs intake, scores the launch tier (T1/T2/T3), and creates a launch workspace containing a brief, a checklist filtered to the tier and given dates, a tracking plan, and a message-house stub. Use when someone says "we're launching X", "new feature launch", "plan a product announcement", or "kick off a launch".
+description: Start a product launch in the GrowthCast release checklist studio. Runs intake from a note, PRD or conversation, scores the tier (T1/T2/T3), and pressure-tests the plan. Use for "Fill brief from note" or "Score tier" requests, or when someone says "we're launching X", "plan a product announcement", or "kick off a launch".
 argument-hint: "[feature name] [target launch date]"
 ---
 
 # Launch Kickoff
 
-Templates live in the plugin's `templates/` directory, two levels up from this skill's base directory (`${CLAUDE_PLUGIN_ROOT}/templates/`).
+Works on a launch JSON (schema in the product-release-checklist skill). If there's no launch yet, create one:
+`node <tools>/studio.mjs new "<name>" --t0 <yyyy-mm-dd>` (ask for the date if it's unknown), and tell the user to open
+the studio (`/product-release-checklist:open`).
 
-## 1. Load context
-- Look for `launches/launch-context.md` in the current project. If it's missing, copy `templates/launch-context.md` there and ask the user to fill it in. Offer to pre-fill it by reading the company's website, but don't block on it.
-- Read `launches/calendar.md` if it exists. You'll use it to check for date collisions.
+## 1. Context
+Read the company context file. Read `studio.mjs list` to see other launches near this T-0.
 
-## 2. Intake
-Ask only for what you can't infer. Use AskUserQuestion with a maximum of 4 questions per round. You need:
-1. Feature name and a one-paragraph description (or a PRD/Linear/Notion link to read).
-2. Target T-0 date, and whether rollout will be at 100% for the announced audience on that date.
-3. Eligibility: plans, platforms, regions, languages. Pricing or packaging impact.
-4. The customer evidence behind it (requests, churn reasons, beta results).
+## 2. Intake → `brief`
+Use the user's note, and any PRD, Linear or Notion link it contains. Fill what you can infer:
+- `description`: one plain-language paragraph
+- `persona`, `job` ("When I…, I want to…, so I can…"), `alternative` (what they use today)
+- `plans`, `platforms`, `regions`, `pricing`, `outcome`
+- `rollout.full` and `rollout.note`, only if stated
 
-## 3. Tier it
-Score the launch with `templates/tiering-rubric.md`. Show the score for each factor, with a one-line reason for each, then the total and the tier. The user can override, but record the override and the reason.
+Ask the user (AskUserQuestion, at most 4 questions per round) only for what you can't infer and what matters most:
+T-0 date, rollout at 100% on T-0, plan eligibility and pricing, and customer evidence. Never invent `evidence`.
 
-## 4. Create the workspace
-Create `launches/<YYYY-MM>-<slug>/` with:
-- `brief.md` from `launch-brief.md`, filled with what you know
-- `checklist.md` from `checklist.md`, with `launches/checklist-overrides.md` applied on top if it exists. You must also:
-  - delete every item whose tags don't include this tier
-  - turn T-minus phases into real calendar dates counted back from T-0, skipping weekends
-  - add `Owner: ___ · Due: <date> · Evidence: ___` under each item
-  - leave the owner roles in place for the user to swap for names
-- `tracking-plan.md` from `tracking-plan.md`, with `{{slug}}` replaced
-- `message-house.md` from `message-house.md` (stub)
-- `assets/` (empty, filled by launch-assets)
+## 3. Tier → `tier.scores`, `tier.reasons`
+Score each factor 0–3 using the rubric in `studio/model.mjs` (`RUBRIC`). Each reason is one line that cites a fact.
+11–15 is T1, 6–10 is T2, 0–5 is T3. Don't set `override`; the user does that in the studio, with a reason.
 
-Append the launch to `launches/calendar.md` (`| T-0 | Launch | Tier | DRI | Status |`). Flag any other T1/T2 within ±7 days.
+## 4. Pressure-test → `feedback`
+Replace `feedback` with findings for every failure mode that applies (severity, area, text, fix, owner role, item id):
+- The announcement comes before 100% rollout for the announced audience (`rollout-plan`). Blocker.
+- No single DRI, or the DRI is the founder (`dri`).
+- The success metric is a vanity metric rather than activation (`metric`).
+- No baseline is possible because the events don't exist yet. Instrumentation is the critical path (`events`).
+- A T1 with no customer evidence or proof point (`evidence`). Blocker for T1.
+- Pricing or packaging undecided under 14 days out (`packaging`).
+- The feature name is internal jargon (`name`).
+- Another T1/T2 within ±7 days (`calendar`).
+- Company-specific risks from the context file. For example: a feature gated to paid plans needs an upgrade path for Free users; supported languages need localized copy.
 
-## 5. Pressure-test before handing off
-Before finishing, check the intake for these failure modes and raise any that apply. Don't silently fix them:
-- The announcement date is earlier than the 100% rollout date for the announced audience.
-- There's no single DRI, or the DRI is the founder (founders approve; someone else runs the launch).
-- The success metric is a vanity metric (views, clicks, "awareness") rather than activation.
-- No baseline is possible because the events don't exist yet. Instrumentation then becomes the critical path.
-- A T1 with no customer evidence or proof point.
-- Pricing or packaging is undecided less than 14 days out.
-- The feature name is internal jargon.
+Set `feedback.at` to now and put the single biggest risk in `feedback.summary`.
 
-## 6. Output
-End with: tier and reasoning, the workspace path, the next 5 checklist items due (with dates), and the suggested next command (`/product-release-checklist:launch-messaging`).
+## 5. Hand off
+Validate. In chat, give: the tier with a one-line reason, the next 5 items due (from the Checklist tab), and the next
+step (usually "Write message house").
