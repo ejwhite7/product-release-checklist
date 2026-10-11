@@ -173,3 +173,18 @@ test("team plan: per-person sections, unassigned section, CSV rows", () => {
 	assert.equal(csv.length, itemsFor(l).length + 1);
 	assert.match(csv[0], /^Owner,Email,Role/);
 });
+
+test("video: workstream items for T1/T2, gate, migration and checks", () => {
+	const { launch: l } = normalize({ id: "l_v", name: "V", t0: "2026-11-17", tier: { override: 2 }, items: { video: { status: "done", evidence: "x" } } });
+	const ids = itemsFor(l).map((i) => i.id);
+	for (const id of ["video-brief", "video-script", "ui-freeze", "video-production", "video-review", "video-final", "video-cutdowns", "video-handoff", "video-performance"]) assert.ok(ids.includes(id), id);
+	assert.equal(l.items["video-final"].status, "done", "old single video item migrates to video-final");
+	const gate = readiness(l).gates.find((g) => g.id === "video");
+	assert.ok(gate && !gate.ok, "hero cut not ready keeps the video gate closed");
+	l.video.deliverables.hero.status = "ready";
+	assert.ok(readiness(l).gates.find((g) => g.id === "video").ok);
+	l.video.rounds = [{ decision: "changes" }, { decision: "changes" }, { decision: "changes" }];
+	assert.match(checks(l).map((c) => c.text).join("\n"), /3 review rounds/);
+	const { launch: t3 } = normalize({ id: "l_v3", name: "V", t0: "2026-11-17", tier: { override: 3 } });
+	assert.ok(!itemsFor(t3).some((i) => i.id.startsWith("video")), "T3 has no video workstream");
+});

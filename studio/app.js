@@ -2,7 +2,7 @@
 // Readiness, Retro), plus the portfolio of every launch. Edits bind straight into the launch object and save after a
 // short pause. The server file is the source of truth: when its version changes underneath (Claude edited it), the
 // studio reloads it. Ask Claude queues a request that goes to Claude Code with the user's next message there.
-import { ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
+import { VIDEO_APPROVERS, VIDEO_DELIVERABLES, VIDEO_FORMATS, VIDEO_HANDOFFS, DELIVERABLE_STATUS, ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -25,14 +25,15 @@ const TABS = [
 	["brief", "Brief & tier"],
 	["staffing", "Staffing"],
 	["checklist", "Checklist"],
+	["video", "Video"],
 	["messaging", "Messaging"],
 	["assets", "Assets"],
 	["measure", "Measure"],
 	["readiness", "Readiness"],
 	["retro", "Retro"],
 ];
-const ASK = { sync: "Sync to Linear", plan: "Publish team plan", intake: "Fill brief from note", tier: "Score tier", messaging: "Write message house", assets: "Draft assets", review: "Red-team review", measure: "Plan measurement", readout: "Write readout", retro: "Run retro" };
-const TAB_ASK = { overview: "review", staffing: "sync", brief: "intake", checklist: "review", messaging: "messaging", assets: "assets", measure: "measure", readiness: "review", retro: "retro" };
+const ASK = { "video-script": "Write video script", "video-produce": "Plan or make the video", "video-review": "Turn notes into revisions", sync: "Sync to Linear", plan: "Publish team plan", intake: "Fill brief from note", tier: "Score tier", messaging: "Write message house", assets: "Draft assets", review: "Red-team review", measure: "Plan measurement", readout: "Write readout", retro: "Run retro" };
+const TAB_ASKS = { overview: ["review", "intake"], brief: ["intake", "tier"], staffing: ["sync", "plan"], checklist: ["review", "sync"], video: ["video-script", "video-produce", "video-review"], messaging: ["messaging"], assets: ["assets"], measure: ["measure", "readout"], readiness: ["review"], retro: ["retro"] };
 const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" } };
 
 // --- Data ---
@@ -159,8 +160,9 @@ function refreshSide() {
 	renderAsk();
 }
 function renderAsk() {
-	const prim = TAB_ASK[S.tab] ?? "review";
-	$("#askBtns").innerHTML = [prim, ...Object.keys(ASK).filter((k) => k !== prim)].map((k, i) => `<button data-ask="${k}" class="${i === 0 ? "primary" : ""}">${ASK[k]}${k === "assets" && S.picked.size ? ` (${S.picked.size})` : ""}</button>`).join("");
+	const mine = TAB_ASKS[S.tab] ?? ["review"];
+	const rest = Object.keys(ASK).filter((k) => !mine.includes(k));
+	$("#askBtns").innerHTML = mine.map((k, i) => `<button data-ask="${k}" class="${i === 0 ? "primary" : ""}">${ASK[k]}${k === "assets" && S.picked.size ? ` (${S.picked.size})` : ""}</button>`).join("") + `<select data-ask-select class="ask-more"><option value="">Other requests…</option>${rest.map((k) => `<option value="${k}">${ASK[k]}</option>`).join("")}</select>`;
 	const r = S.request;
 	const el = $("#askState");
 	if (!r) return (el.hidden = true);
@@ -171,7 +173,7 @@ function renderAsk() {
 }
 
 // --- Views ---
-const VIEWS = { overview: viewOverview, staffing: viewStaffing, brief: viewBrief, checklist: viewChecklist, messaging: viewMessaging, assets: viewAssets, measure: viewMeasure, readiness: viewReadiness, retro: viewRetro };
+const VIEWS = { overview: viewOverview, video: viewVideo, staffing: viewStaffing, brief: viewBrief, checklist: viewChecklist, messaging: viewMessaging, assets: viewAssets, measure: viewMeasure, readiness: viewReadiness, retro: viewRetro };
 
 function timeline(l, items) {
 	const from = -30, to = 30, span = to - from;
@@ -326,6 +328,71 @@ function viewStaffing() {
 	<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
 		<p class="hint">Sync creates a Linear project for this launch (via Composio), with a milestone per phase and one issue per open task, assigned to its owner, with the due date. Re-syncing updates existing issues instead of duplicating them, and issues closed in Linear tick off here, with the issue as evidence.</p>
 		<div class="row">${ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : ""}<button class="primary" data-ask="sync">${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button><button data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="/api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div>
+	</div>`;
+}
+
+const VIDEO_STEPS = [["video-brief", "Brief"], ["video-script", "Script"], ["ui-freeze", "UI freeze"], ["video-production", "Production"], ["video-review", "Review"], ["video-final", "Master"], ["video-cutdowns", "Cutdowns"], ["video-handoff", "Hand-off"], ["social-sequence", "Launch"], ["video-performance", "Performance"]];
+function viewVideo() {
+	const l = S.launch;
+	const v = l.video;
+	const tier = effectiveTier(l);
+	const items = Object.fromEntries(itemsFor(l).map((i) => [i.id, i]));
+	if (!items["video-final"]) return `<h2>Launch video</h2><div class="empty"><b>No launch video at T3.</b>Minor launches use the in-app loop or a GIF in the changelog. Override the tier to T2 if this one deserves a video.</div>`;
+	const steps = VIDEO_STEPS.filter(([id]) => items[id]);
+	const script = l.assets["announcement-video"] ?? { status: "todo", body: "" };
+	const staffed = (role) => l.people.find((p) => p.id === l.staffing[role])?.name;
+	const dels = VIDEO_DELIVERABLES.filter((d) => d.tiers.includes(tier));
+	const hos = VIDEO_HANDOFFS.filter((h) => h.tiers.includes(tier));
+	const approved = VIDEO_APPROVERS.every(([r]) => v.approvers[r].status === "approved");
+	return `<h2>Launch video <small>brief → script → production → review → master → cutdowns → hand-off → launch → performance</small></h2>
+	<p class="lede">The video every channel shares on launch day. Dates count back from T-0. For ${tier === 1 ? "T1" : "T2"}, the approved hero cut is a go/no-go gate.</p>
+	<div class="stepper">${steps.map(([id, label]) => { const i = items[id]; return `<button class="step st-${i.status}${i.overdue ? " late" : ""}" data-goto-step="${id}"><b>${label}</b><span>${fmtDate(i.due).replace(/^\w+, /, "")}</span><small>${esc(i.ownerName || i.role)}</small></button>`; }).join("")}</div>
+	<div class="card" id="video-steps"><h3 style="margin-top:0">Steps <small>status, owner, evidence. Same items as the checklist.</small></h3><datalist id="owners">${l.people.map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>${steps.map(([id]) => itemRow(items[id])).join("")}</div>
+
+	<div class="grid2">
+		<div class="card"><h3 style="margin-top:0">Concept <small>the brief for whoever makes it</small></h3>
+			<div class="grid2">
+				${field("Format", `<select data-bind="video.format" data-rerender>${opt(VIDEO_FORMATS, v.format)}</select>`)}
+				${field("Length (hero)", inp("video.length", "60–90s"))}
+				${field("Hook (first 2 seconds)", inp("video.hook", "What makes someone stop scrolling"), "span2")}
+				${field("Talent", inp("video.talent", "Founder, customer, VO artist…"))}
+				${field("Music", inp("video.music", "Track + license"))}
+				${field("Tools", inp("video.tools", "Screen Studio, Descript, Veo, ElevenLabs…"), "span2")}
+				${field("Concept & production plan", ta("video.concept", "Story beats, shot list, capture checklist, schedule", 5), "span2")}
+			</div>
+		</div>
+		<div class="card"><h3 style="margin-top:0">Script <span class="st as-${script.status}">${esc(ASSET_STATUS.find(([k]) => k === script.status)?.[1])}</span></h3>
+			${script.body ? `<pre class="scriptprev">${esc(script.body.slice(0, 1200))}${script.body.length > 1200 ? "\n…" : ""}</pre>` : `<p class="hint">No script yet. Claude writes it as a two-column script (what's on screen, what's said) with a shot list, from the brief and message house.</p>`}
+			<div class="row"><button class="primary" data-ask="video-script">${script.body ? "Rewrite" : "Write"} script with Claude</button><button data-act="openScript">Open in Assets</button></div>
+			<h3>Rights <small>needed before paid use</small></h3>
+			<label class="row small"><input type="checkbox" data-bind="video.rights.music" ${v.rights.music ? "checked" : ""}> Music licensed (incl. paid ads)</label>
+			<label class="row small"><input type="checkbox" data-bind="video.rights.talent" ${v.rights.talent ? "checked" : ""}> Talent / customer releases signed</label>
+			${tier === 1 ? `<label class="row small"><input type="checkbox" data-bind="video.rights.paid" data-rerender ${v.rights.paid ? "checked" : ""}> Cleared for paid media and creator whitelisting</label>` : ""}
+		</div>
+	</div>
+
+	<div class="card"><h3 style="margin-top:0">Review & sign-off <small>2 rounds max; timestamped notes</small></h3>
+		<table class="tbl"><thead><tr><th>Approver</th><th>Who</th><th>Checks</th><th>Status</th><th>Note</th></tr></thead><tbody>
+		${VIDEO_APPROVERS.map(([role, what]) => `<tr><td class="mono">${role}</td><td>${esc(staffed(role) ?? "—")}</td><td class="small">${esc(what)}</td><td style="width:150px"><select data-bind="video.approvers.${role}.status" data-rerender class="appr-${v.approvers[role].status}">${opt([["pending", "Pending"], ["changes", "Changes requested"], ["approved", "Approved"]], v.approvers[role].status)}</select></td><td>${inp(`video.approvers.${role}.note`, "")}</td></tr>`).join("")}
+		</tbody></table>
+		<h3>Rounds</h3>
+		${v.rounds.map((r, i) => `<div class="round"><div class="row"><b class="mono">Round ${i + 1}</b><input type="date" data-bind="video.rounds.${i}.at" value="${esc(r.at)}" style="width:150px"><input data-bind="video.rounds.${i}.link" value="${esc(r.link)}" placeholder="Cut link (Frame.io, Loom, Drive, file path)" style="flex:1;min-width:200px"><input data-bind="video.rounds.${i}.reviewer" value="${esc(r.reviewer)}" placeholder="Reviewer" style="width:150px"><select data-bind="video.rounds.${i}.decision" data-rerender style="width:170px">${opt([["", "Open"], ["changes", "Changes requested"], ["approved", "Approved"]], r.decision)}</select><button class="ghost sm" data-act="rm" data-list="video.rounds" data-i="${i}">✕</button></div>${ta(`video.rounds.${i}.notes`, "0:03 hook too slow, start on the result\n0:21 UI shows staging data", 4)}</div>`).join("") || `<p class="hint">No cuts reviewed yet.</p>`}
+		<div class="row" style="margin-top:8px"><button class="sm" data-act="addRound">+ Add round</button><button class="sm" data-ask="video-review">Turn notes into revisions</button>${v.rounds.length >= 3 ? '<span class="v-go-waivers small">3+ rounds: lock scope.</span>' : ""}</div>
+		<div class="grid2" style="margin-top:14px">${field("Final master", inp("video.master", "Link to the approved master"))}${field("Archive (project files, raw, licenses)", inp("video.archive", "Shared drive folder"))}</div>
+		<div class="row" style="margin-top:10px">${items["video-final"].status === "done" ? `<span class="v-go">✓ Master approved</span>` : `<button class="primary" data-act="approveMaster" ${approved && v.master ? "" : "disabled"} title="${approved && v.master ? "" : "Needs every approver and a master link"}">Approve master</button><span class="hint">${approved ? (v.master ? "" : "Add the master link.") : "Waiting on sign-off."}</span>`}</div>
+	</div>
+
+	<div class="card"><h3 style="margin-top:0">Deliverables <small>cut from the master</small></h3>
+		<table class="tbl"><thead><tr><th>Cut</th><th>Spec</th><th>Used in</th><th>Status</th><th>Captions</th><th>File / link</th></tr></thead><tbody>
+		${dels.map((d) => `<tr><td><b>${esc(d.label)}</b></td><td class="small">${esc(d.spec)}</td><td class="small">${esc(d.use)}</td><td style="width:130px"><select data-bind="video.deliverables.${d.id}.status" data-rerender>${opt(DELIVERABLE_STATUS, v.deliverables[d.id].status)}</select></td><td style="text-align:center"><input type="checkbox" data-bind="video.deliverables.${d.id}.captions" ${v.deliverables[d.id].captions ? "checked" : ""}></td><td>${inp(`video.deliverables.${d.id}.link`, "Link")}</td></tr>`).join("")}
+		</tbody></table>
+	</div>
+
+	<div class="card"><h3 style="margin-top:0">Hand-off packet <small>${hos.filter((h) => v.handoff[h.id].sent).length}/${hos.length} sent</small></h3>
+		<table class="tbl"><thead><tr><th></th><th>To</th><th>Owner</th><th>What they get</th><th>Link (folder, message, ticket)</th></tr></thead><tbody>
+		${hos.map((h) => `<tr><td><input type="checkbox" data-bind="video.handoff.${h.id}.sent" data-rerender ${v.handoff[h.id].sent ? "checked" : ""}></td><td><b>${esc(h.label)}</b></td><td>${esc(staffed(h.role) ?? h.role)}</td><td class="small">${esc(h.what)}</td><td>${inp(`video.handoff.${h.id}.link`, "Link")}</td></tr>`).join("")}
+		</tbody></table>
+		${hos.every((h) => v.handoff[h.id].sent) && items["video-handoff"].status !== "done" ? `<div class="row" style="margin-top:10px"><button class="primary" data-act="handoffDone">Mark hand-off done</button></div>` : ""}
 	</div>`;
 }
 
@@ -551,7 +618,7 @@ async function ask(kind, assetIds) {
 }
 function goto(itemId, area) {
 	if (!itemId) {
-		S.tab = { Staffing: "staffing", Brief: "brief", Measure: "measure", Messaging: "messaging", Calendar: "brief", Checklist: "checklist" }[area] ?? S.tab;
+		S.tab = { Video: "video", Staffing: "staffing", Brief: "brief", Measure: "measure", Messaging: "messaging", Calendar: "brief", Checklist: "checklist" }[area] ?? S.tab;
 		return render();
 	}
 	if (!itemsFor(S.launch).some((i) => i.id === itemId)) return toast("That item isn't in this tier's checklist.");
@@ -616,6 +683,31 @@ const ACT = {
 		render();
 	},
 	draftOne: (el) => ask("assets", [el.dataset.id]),
+	openScript: () => {
+		S.assetSel = "announcement-video";
+		S.tab = "assets";
+		render();
+	},
+	addRound: () => {
+		S.launch.video.rounds.push({ at: today(), link: "", reviewer: "", decision: "", notes: "" });
+		markDirty();
+		render();
+	},
+	approveMaster: () => {
+		const st = itemState("video-final");
+		Object.assign(st, { status: "done", evidence: st.evidence || S.launch.video.master });
+		const rv = itemState("video-review");
+		if (rv.status !== "done") Object.assign(rv, { status: "done", evidence: rv.evidence || "Signed off on the Video tab" });
+		if (S.launch.video.deliverables.hero.status === "todo") S.launch.video.deliverables.hero.status = "ready";
+		markDirty();
+		render();
+	},
+	handoffDone: () => {
+		const st = itemState("video-handoff");
+		Object.assign(st, { status: "done", evidence: st.evidence || "Hand-off packet on the Video tab" });
+		markDirty();
+		render();
+	},
 	addPerson: () => {
 		S.launch.people.push({ id: `p_${Date.now().toString(36)}`, name: "", email: "", title: "", capacity: "", linearUserId: "" });
 		markDirty();
@@ -647,6 +739,13 @@ document.addEventListener("click", (e) => {
 	const askBtn = t.closest("[data-ask]");
 	if (askBtn) return ask(askBtn.dataset.ask).catch((err) => toast(err.message));
 	if (t.closest("[data-ask-clear]")) return api("/api/request", { method: "DELETE" }).then(() => ((S.request = null), renderAsk()));
+	const stp = t.closest("[data-goto-step]");
+	if (stp) {
+		const el = document.getElementById(`it-${stp.dataset.gotoStep}`);
+		el?.scrollIntoView({ block: "center" });
+		el?.classList.add("flash");
+		return;
+	}
 	const wh = t.closest("[data-who]");
 	if (wh && S.launch) {
 		e.preventDefault();
@@ -709,6 +808,7 @@ function onField(e, commit) {
 document.addEventListener("input", (e) => onField(e, false));
 document.addEventListener("change", (e) => {
 	if (e.target.id === "launchSel") return (location.hash = e.target.value || "portfolio");
+	if (e.target.matches("[data-ask-select]")) return e.target.value && ask(e.target.value).catch((err) => toast(err.message));
 	if (e.target.dataset.filter === "q") return;
 	onField(e, true);
 });

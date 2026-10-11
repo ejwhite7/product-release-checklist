@@ -33,6 +33,7 @@ asset specs and readiness gates are defined once in `studio/model.mjs`: read it 
 | Plan measurement | launch-measure (plan, baseline) | `measure`, notes on items `metric`/`baseline` |
 | Write readout | launch-measure (readouts) | `measure.stages.*.a7/a30/a90`, `measure.channels`, `measure.readouts` |
 | Run retro | launch-retro | `retro`, optionally `custom` items |
+| Write video script / Plan or make the video / Turn notes into revisions | launch-video | `video`, `assets.announcement-video` |
 | Sync to Linear | launch-linear-sync (Composio) | `sync.linear` via `studio.mjs link`; item statuses pulled from Linear |
 | Publish team launch plan | export, then publish `team-plan.html` as an Artifact | nothing in the launch |
 | Publish share link | the share command | nothing in the launch |
@@ -65,6 +66,13 @@ asset specs and readiness gates are defined once in `studio/model.mjs`: read it 
                "channels": [{ "channel": "", "exposed": "", "discovered": "", "activated": "", "cost": "" }],
                "readouts": { "7|30|90": { "verdict": "on_track|behind|ahead|", "recommendation": "double_down|iterate|hold|sunset|", "notes": "", "at": "" } } },
   "feedback": { "at": "ISO", "summary": "", "items": [{ "severity": "blocker|high|medium|info", "area": "", "text": "", "fix": "", "owner": "ROLE", "item": "<item id>", "resolved": false }] },
+  "video": { "format": "screen-demo|founder|ai-hybrid|animated|ugc|", "length": "", "hook": "", "concept": "", "talent": "", "music": "", "tools": "",
+             "rights": { "music": false, "talent": false, "paid": false },
+             "approvers": { "PMM|FOUNDER|LEGAL": { "status": "pending|changes|approved", "note": "", "at": "" } },
+             "rounds": [{ "at": "yyyy-mm-dd", "link": "", "reviewer": "", "decision": "changes|approved|", "notes": "" }],
+             "master": "", "archive": "",
+             "deliverables": { "hero|vertical|square|loop|ads|captions": { "status": "todo|editing|review|ready|live", "link": "", "captions": false } },
+             "handoff": { "social|employee|paid|web|support|cs|archive": { "sent": false, "link": "" } } },
   "people": [{ "id": "p_…", "name": "Sam Lee", "email": "sam@company.com", "title": "PMM", "capacity": "50%", "linearUserId": "" }],
   "staffing": { "PMM": "p_…", "DRI": "p_…" },     // role → person id; items inherit the owner from their role
   "sync": { "linear": { "teamId": "", "teamName": "", "projectId": "", "projectUrl": "", "syncedAt": "", "pulledAt": "",

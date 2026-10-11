@@ -51,7 +51,7 @@ export const tierFromScore = (s) => (s >= 11 ? 1 : s >= 6 ? 2 : 3);
 // Assets the launch produces. `item` links each to the checklist item it completes.
 export const ASSETS = [
 	{ id: "founder-announcement", label: "Founder product announcement", tiers: [1, 2], role: "PMM", item: "founder-post", spec: "Outcome-led headline; short personal opening (why we built it); per feature: benefit subhead, 2–4 sentences, [VISUAL] placeholder, who it's for, deep-link CTA; what's next; sign-off." },
-	{ id: "announcement-video", label: "Announcement video script", tiers: [1], role: "CONTENT", item: "video", spec: "60–90s hero script plus 9:16, 1:1, 16:9 cutdown notes. Burned-in captions. Hook in the first 2 seconds. Music that's cleared for paid reuse." },
+	{ id: "announcement-video", label: "Announcement video script & storyboard", tiers: [1, 2], role: "CONTENT", item: "video-script", spec: "Two-column script (what's on screen | what's said) for the hero cut. Hook in the first 2 seconds, one message, one proof moment, one CTA. Shot list per scene (screen capture, founder on camera, AI or b-roll), on-screen text, and notes for the vertical and paid cutdowns. Production details live on the Video tab." },
 	{ id: "social-founder", label: "Founder social posts", tiers: [1, 2], role: "SOCIAL", item: "social-founder", spec: "One native post per platform (X thread, LinkedIn, TikTok/IG caption). Video is the hero. Hook in line one. LinkedIn link in the first comment." },
 	{ id: "social-company", label: "Company social posts + calendar", tiers: [1, 2], role: "SOCIAL", item: "social-company", spec: "Launch-day posts per platform, then a T-0 → T+14 calendar." },
 	{ id: "employee-kit", label: "Employee advocacy kit", tiers: [1], role: "SOCIAL", item: "employee-kit", spec: "3 voice variants (builder, customer-facing, simple share), a per-employee UTM template, and the T-0 Slack nudge." },
@@ -71,6 +71,28 @@ export const ASSETS = [
 	{ id: "internal-announcement", label: "Internal announcement", tiers: [1, 2], role: "DRI", item: "internal", spec: "Slack post, all-hands demo outline, internal FAQ." },
 ];
 
+// The launch video: formats, the deliverables cut from the master, the approvers, and who it's handed off to.
+export const VIDEO_FORMATS = [["", "Choose a format"], ["screen-demo", "Screen demo (recorded product UI)"], ["founder", "Founder on camera + product UI"], ["ai-hybrid", "AI-generated shots + product UI"], ["animated", "Motion graphics / animated UI"], ["ugc", "Creator / UGC style"]];
+export const VIDEO_DELIVERABLES = [
+	{ id: "hero", label: "Hero cut", spec: "16:9 · 60–90s · captions burned in", use: "YouTube, landing page, announcement post, webinar", tiers: [1, 2] },
+	{ id: "vertical", label: "Vertical", spec: "9:16 · 30–45s · UI inside safe zones", use: "TikTok, Reels, Shorts, founder and employee social", tiers: [1, 2] },
+	{ id: "square", label: "Square", spec: "1:1 · 30s", use: "LinkedIn, X and Facebook feeds", tiers: [1] },
+	{ id: "loop", label: "In-app / KB loop", spec: "Silent · 10–20s · MP4 + GIF fallback", use: "In-app modal, KB article, changelog", tiers: [1, 2] },
+	{ id: "ads", label: "Paid cuts", spec: "6s, 15s, 30s · 3 hook variants · 9:16, 1:1, 4:5", use: "Meta, TikTok and YouTube ads", tiers: [1] },
+	{ id: "captions", label: "Captions & thumbnails", spec: "SRT per cut and language · 2 thumbnail options", use: "Every upload", tiers: [1, 2] },
+];
+export const VIDEO_APPROVERS = [["PMM", "Message and claims match the message house"], ["FOUNDER", "Voice and narrative"], ["LEGAL", "Claims, music and talent rights"]];
+export const VIDEO_HANDOFFS = [
+	{ id: "social", role: "SOCIAL", label: "Social & founder", what: "Vertical and square files, captions, post copy per platform, posting order for T-0", tiers: [1, 2] },
+	{ id: "employee", role: "SOCIAL", label: "Employee advocacy", what: "Download link and pre-written posts added to the advocacy kit", tiers: [1] },
+	{ id: "paid", role: "PAID", label: "Paid media", what: "Ad cuts to spec, hook variants, proof that music and talent are cleared for paid, UTMs", tiers: [1] },
+	{ id: "web", role: "WEB", label: "Website", what: "Hero embed and poster frame for the landing page and announcement post", tiers: [1, 2] },
+	{ id: "support", role: "SUPPORT", label: "Support / KB", what: "Loop and hero link embedded in the KB article; cross-link from the YouTube tutorial", tiers: [1, 2] },
+	{ id: "cs", role: "CS", label: "Customer success", what: "Hero link and a one-line intro for key-account outreach", tiers: [1, 2] },
+	{ id: "archive", role: "CONTENT", label: "Archive", what: "Master, project files, raw footage and licenses in the shared drive", tiers: [1, 2] },
+];
+export const DELIVERABLE_STATUS = [["todo", "Not started"], ["editing", "Editing"], ["review", "In review"], ["ready", "Ready"], ["live", "Live"]];
+
 // The checklist. `due` is days from T-0 (negative = before). `gate` marks a hard go/no-go gate (gate: 1 = T1 only).
 const I = (phase, id, tiers, role, due, text, extra = {}) => ({ phase, id, tiers, role, due, text, ...extra });
 export const ITEMS = [
@@ -89,10 +111,17 @@ export const ITEMS = [
 	I("narrative", "name", [1, 2], "PMM", -14, "Feature name checked: plain-language, searchable, translatable, trademark-safe"),
 	I("narrative", "founder-angle", [1], "FOUNDER", -14, "Founder narrative angle agreed: why we built it, what it says about where we're going"),
 	I("narrative", "claims", [1, 2], "LEGAL", -7, "Claims review: performance numbers, AI claims, competitor comparisons, “free”/“unlimited”"),
+	I("narrative", "video-brief", [1, 2], "PMM", -21, "Video brief: the one message, audience, format (screen demo, founder on camera, AI or hybrid), length, channels, approvers (Video tab)"),
+	I("narrative", "video-script", [1, 2], "CONTENT", -14, "Video script and storyboard approved: hook in 2 seconds, one message, proof, CTA"),
 	I("narrative", "requesters", [1, 2], "PMM", -14, "Users who requested it identified (request board, support tags, CS notes) so they hear first"),
 
 	I("build", "founder-post", [1, 2], "PMM", -5, "Founder product announcement written in product-marketing terms"),
-	I("build", "video", [1], "CONTENT", -5, "Announcement video: hero cut plus 9:16, 1:1, 16:9, captions"),
+	I("build", "ui-freeze", [1, 2], "PM", -12, "Feature UI frozen in a capture environment with realistic demo data (video and screenshots depend on it)"),
+	I("build", "video-production", [1, 2], "CONTENT", -9, "Video production: screen capture, founder takes, AI shots, voiceover, music licensed for paid use"),
+	I("build", "video-review", [1, 2], "PMM", -6, "Video review closed: PMM, founder and legal signed off on the cut (2 rounds max)"),
+	I("build", "video-final", [1, 2], "CONTENT", -5, "Video master approved and archived with project files and licenses", { gate: 1 }),
+	I("build", "video-cutdowns", [1, 2], "CONTENT", -4, "Video cutdowns and captions: vertical, square, in-app loop, paid cuts, SRT files, thumbnails"),
+	I("build", "video-handoff", [1, 2], "CONTENT", -3, "Video hand-off packet sent to social, paid, web, support and CS, each with files, captions and specs (Video tab)"),
 	I("build", "landing-page", [1, 2], "WEB", -5, "Feature landing page live-ready: indexable, target keyword, FAQ schema"),
 	I("build", "banner", [1, 2], "WEB", -5, "Marketing-site banner built, with an expiry date"),
 	I("build", "changelog", [1, 2, 3], "PM", -5, "Changelog entry written for users (curated, not raw release notes)"),
@@ -144,6 +173,7 @@ export const ITEMS = [
 	I("amplify", "feedback-prompt", [1, 2], "PM", 3, "In-product feedback prompt (1 question, after second use)"),
 	I("amplify", "lifecycle-check", [1, 2], "LIFECYCLE", 7, "Non-adopter sequence running; deliverability and unsubscribes checked"),
 	I("amplify", "ticket-review", [1, 2], "SUPPORT", 7, "Weekly ticket review: confusion → docs/UX, bugs → backlog"),
+	I("amplify", "video-performance", [1, 2], "DATA", 7, "Video performance read: hook retention, completion, click-through and activations by cut; refresh weak paid cuts"),
 	I("amplify", "webinar-held", [1], "PMM", 10, "Webinar held; recording cut into clips"),
 	I("amplify", "creator-waves", [1], "SOCIAL", 14, "Creator content in waves; top performers moved into paid"),
 	I("amplify", "second-wave", [1, 2], "PMM", 14, "Second wave: a customer story and a “you asked, we answered” post"),
@@ -220,7 +250,9 @@ export function normalize(raw) {
 	const m = r.message ?? {};
 	const me = r.measure ?? {};
 	const items = {};
-	for (const [k, v] of Object.entries(r.items ?? {})) {
+	const rawItems = { ...(r.items ?? {}) };
+	if (rawItems.video && !rawItems["video-final"]) rawItems["video-final"] = rawItems.video;
+	for (const [k, v] of Object.entries(rawItems)) {
 		if (!itemById[k] && !arr(r.custom).some((c) => c.id === k)) continue;
 		items[k] = { status: oneOf(v?.status, ITEM_STATUS, "todo"), owner: str(v?.owner, 120), due: validDate(v?.due) ? v.due : "", evidence: str(v?.evidence, 2000), note: str(v?.note, 4000) };
 	}
@@ -299,6 +331,7 @@ export function normalize(raw) {
 			summary: str(r.feedback?.summary, 4000),
 			items: arr(r.feedback?.items).slice(0, 60).map((f) => ({ severity: ["blocker", "high", "medium", "info"].includes(f?.severity) ? f.severity : "medium", area: str(f?.area, 60), text: str(f?.text, 1200), fix: str(f?.fix, 1200), owner: str(f?.owner, 60), item: str(f?.item, 64), resolved: bool(f?.resolved) })),
 		},
+		video: normalizeVideo(r.video),
 		people: arr(r.people).filter((x) => x && x.id && (x.name || x.email)).slice(0, 60).map((x) => ({ id: str(x.id, 64), name: str(x.name, 120), email: str(x.email, 200).trim().toLowerCase(), title: str(x.title, 120), capacity: str(x.capacity, 40), linearUserId: str(x.linearUserId, 64) })),
 		staffing: Object.fromEntries(ROLES.map((k) => [k, arr(r.people).some((x) => x?.id && x.id === r.staffing?.[k]) ? r.staffing[k] : ""]).filter(([, v]) => v)),
 		sync: { linear: normalizeLinear(r.sync?.linear) },
@@ -307,6 +340,27 @@ export function normalize(raw) {
 		updatedAt: str(r.updatedAt, 40),
 	};
 	return { launch, errors };
+}
+
+function normalizeVideo(x) {
+	const v = x ?? {};
+	const approvers = Object.fromEntries(VIDEO_APPROVERS.map(([role]) => [role, { status: ["pending", "approved", "changes"].includes(v.approvers?.[role]?.status) ? v.approvers[role].status : "pending", note: str(v.approvers?.[role]?.note, 1000), at: str(v.approvers?.[role]?.at, 40) }]));
+	return {
+		format: VIDEO_FORMATS.some(([k]) => k === v.format) ? v.format : "",
+		length: str(v.length, 40),
+		hook: str(v.hook, 400),
+		concept: str(v.concept, 3000),
+		talent: str(v.talent, 400),
+		music: str(v.music, 400),
+		tools: str(v.tools, 400),
+		rights: { music: bool(v.rights?.music), talent: bool(v.rights?.talent), paid: bool(v.rights?.paid) },
+		approvers,
+		rounds: arr(v.rounds).slice(0, 12).map((x) => ({ at: str(x?.at, 40), link: str(x?.link, 1000), reviewer: str(x?.reviewer, 120), decision: ["changes", "approved", ""].includes(x?.decision) ? x.decision : "", notes: str(x?.notes, 6000) })),
+		master: str(v.master, 1000),
+		archive: str(v.archive, 1000),
+		deliverables: Object.fromEntries(VIDEO_DELIVERABLES.map((d) => [d.id, { status: oneOf(v.deliverables?.[d.id]?.status, DELIVERABLE_STATUS, "todo"), link: str(v.deliverables?.[d.id]?.link, 1000), captions: bool(v.deliverables?.[d.id]?.captions) }])),
+		handoff: Object.fromEntries(VIDEO_HANDOFFS.map((h) => [h.id, { sent: bool(v.handoff?.[h.id]?.sent), link: str(v.handoff?.[h.id]?.link, 1000) }])),
+	};
 }
 
 function normalizeLinear(x) {
@@ -391,6 +445,18 @@ export function checks(l, others = []) {
 		const ot = o.tier ?? 3;
 		if (ot <= 2 && (tier ?? 1) <= 2 && Math.abs(daysBetween(o.t0, l.t0)) <= 7) add("warn", "Calendar", `“${o.name}” (T${ot}) launches ${fmtDate(o.t0)}, within 7 days.`, "calendar");
 	}
+	if ((tier ?? 1) <= 2) {
+		const v = l.video;
+		const its = Object.fromEntries(itemsFor(l).map((i) => [i.id, i]));
+		if (!v.format && days <= 21) add("warn", "Video", "No video format chosen. The brief is due now.", "video-brief");
+		if (v.rounds.length >= 3 && v.rounds.at(-1)?.decision !== "approved") add("warn", "Video", `${v.rounds.length} review rounds and still no approval. Lock the script or cut scope.`, "video-review");
+		if (its["ui-freeze"]?.open && !its["video-production"]?.open) add("warn", "Video", "Production is marked done before the UI froze. Recheck the capture against the final UI.", "ui-freeze");
+		if (its["ui-freeze"]?.overdue && its["video-production"]?.open) add("error", "Video", "UI isn't frozen and production is due. The video will show unfinished UI or slip.", "ui-freeze");
+		const pending = VIDEO_APPROVERS.filter(([r]) => v.approvers[r].status !== "approved").map(([r]) => r);
+		if (its["video-review"] && today() >= its["video-review"].due && pending.length) add("warn", "Video", `Video sign-off still pending from ${pending.join(", ")}.`, "video-review");
+		if (tier === 1 && v.deliverables.ads.status !== "todo" && !v.rights.paid) add("error", "Video", "Paid cuts are in progress but music and talent aren't cleared for paid use.", "video-final");
+		if (days <= 5 && days >= 0 && !["ready", "live"].includes(v.deliverables.hero.status)) add("error", "Video", `Hero cut isn't ready ${days} days before launch.`, "video-final");
+	}
 	const w = workload(l);
 	const unstaffed = w.roles.filter((r) => !r.person && r.open);
 	if (l.people.length && unstaffed.length) add("warn", "Staffing", `Nobody staffed for ${unstaffed.map((r) => `${r.role} (${r.open})`).join(", ")}.`);
@@ -419,6 +485,7 @@ export function readiness(l) {
 		{ id: "docs", label: "KB article and support pack ready and shared with support", ok: ok("kb") && ok("support-pack"), item: "kb" },
 		{ id: "message", label: "Message house approved", ok: l.message.status === "approved", item: "message-house" },
 	];
+	if (effectiveTier(l) <= 2) gates.push({ id: "video", label: "Launch video approved, hero cut ready", ok: ok("video-final") && ["ready", "live"].includes(l.video.deliverables.hero.status), item: "video-final" });
 	if (effectiveTier(l) === 1) gates.push({ id: "rollback", label: "Rollback comms drafted", ok: ok("rollback-comms"), item: "rollback-comms" });
 	const blockers = items.filter((i) => ["decide", "narrative", "build", "gonogo"].includes(i.phase) && i.open && i.id !== "readiness");
 	const waived = items.filter((i) => i.status === "waived");
