@@ -41,6 +41,13 @@ issue as evidence. The studio holds no API keys.
 **Share** also opens a one-page report, exports a Markdown pack (brief, checklist, message house, tracking plan, readiness,
 assets) to your export folder, or asks Claude to publish a private share link.
 
+## Hosted in the GrowthCast client portal
+The same studio runs as the portal's **Release Checklist** tab
+([B2B-Saas-Inc/growthcast-release-checklist](https://github.com/B2B-Saas-Inc/growthcast-release-checklist), which copies
+`studio/` and the skills from this repo). There, launches belong to client projects, the company context is written per
+project, clients on a project can view its launches, and Ask Claude runs on the server. Linear sync, folder exports and
+share links stay Claude Code features. Web mode turns on only when the server's `api/settings` says `mode: "web"`.
+
 ## Data
 - Launches: `~/.product-release-checklist/launches/<id>.json`
 - Settings (company context file, export folder): `~/.product-release-checklist/settings.json`

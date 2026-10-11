@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.0
+- The studio also runs hosted in the GrowthCast client portal ("web mode"): launches filed under portal projects, per-project company context, read-only access for clients, and Ask Claude run on the server. API paths are now relative. Local use is unchanged.
+
 ## 0.4.0
 - Launch video workstream: Video tab, nine dated items (brief → performance), approved hero cut as a go/no-go gate, `launch-video` skill.
 

@@ -335,6 +335,8 @@ export function normalize(raw) {
 		people: arr(r.people).filter((x) => x && x.id && (x.name || x.email)).slice(0, 60).map((x) => ({ id: str(x.id, 64), name: str(x.name, 120), email: str(x.email, 200).trim().toLowerCase(), title: str(x.title, 120), capacity: str(x.capacity, 40), linearUserId: str(x.linearUserId, 64) })),
 		staffing: Object.fromEntries(ROLES.map((k) => [k, arr(r.people).some((x) => x?.id && x.id === r.staffing?.[k]) ? r.staffing[k] : ""]).filter(([, v]) => v)),
 		sync: { linear: normalizeLinear(r.sync?.linear) },
+		// The portal project a hosted launch belongs to (the GrowthCast client portal). Empty for local launches.
+		project: { id: str(r.project?.id, 128), name: str(r.project?.name, 160) },
 		retro: { outcome: str(r.retro?.outcome, 2000), worked: str(r.retro?.worked, 6000), didnt: str(r.retro?.didnt, 6000), gaps: str(r.retro?.gaps, 6000), benchmarks: str(r.retro?.benchmarks, 4000) },
 		createdAt: str(r.createdAt, 40),
 		updatedAt: str(r.updatedAt, 40),
@@ -526,5 +528,5 @@ export const VERDICT = { go: "GO", "go-waivers": "GO WITH WAIVERS", "no-go": "NO
 // A short listing row, used by the portfolio and collision checks.
 export const summary = (l) => {
 	const p = progress(l);
-	return { id: l.id, name: l.name, status: l.status, t0: l.t0, tier: tierOf(l), dri: l.dri, pct: p.pct, overdue: p.overdue, updatedAt: l.updatedAt };
+	return { id: l.id, name: l.name, status: l.status, t0: l.t0, tier: tierOf(l), dri: l.dri, pct: p.pct, overdue: p.overdue, updatedAt: l.updatedAt, project: l.project };
 };

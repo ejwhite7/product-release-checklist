@@ -2,6 +2,7 @@
 // Readiness, Retro), plus the portfolio of every launch. Edits bind straight into the launch object and save after a
 // short pause. The server file is the source of truth: when its version changes underneath (Claude edited it), the
 // studio reloads it. Ask Claude queues a request that goes to Claude Code with the user's next message there.
+// The same app runs in the GrowthCast client portal ("web mode", see below), so every API path is relative.
 import { VIDEO_APPROVERS, VIDEO_DELIVERABLES, VIDEO_FORMATS, VIDEO_HANDOFFS, DELIVERABLE_STATUS, ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -34,7 +35,18 @@ const TABS = [
 ];
 const ASK = { "video-script": "Write video script", "video-produce": "Plan or make the video", "video-review": "Turn notes into revisions", sync: "Sync to Linear", plan: "Publish team plan", intake: "Fill brief from note", tier: "Score tier", messaging: "Write message house", assets: "Draft assets", review: "Red-team review", measure: "Plan measurement", readout: "Write readout", retro: "Run retro" };
 const TAB_ASKS = { overview: ["review", "intake"], brief: ["intake", "tier"], staffing: ["sync", "plan"], checklist: ["review", "sync"], video: ["video-script", "video-produce", "video-review"], messaging: ["messaging"], assets: ["assets"], measure: ["measure", "readout"], readiness: ["review"], retro: ["retro"] };
-const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" } };
+// Web mode is the hosted studio inside the GrowthCast client portal (github.com/B2B-Saas-Inc/growthcast-release-checklist).
+// api/settings says so and lists the person's portal projects, whether they can edit (clients only view) and which
+// requests Claude can run there. Ask Claude runs on the server instead of waiting for Claude Code; Linear sync, folder
+// exports and Artifact links are Claude Code features, so they aren't offered.
+const WEB = () => S.settings.mode === "web";
+const RO = () => WEB() && !S.settings.canEdit;
+const askKinds = () => Object.keys(ASK).filter((k) => !WEB() || (S.settings.asks ?? []).includes(k));
+const VIEW_ACTS = new Set(["show", "note", "teamPlan", "openScript"]);
+// Launches that can collide with this one: in the portal, only those in the same client project.
+const sameProject = (l) => (WEB() ? S.launches.filter((x) => x.project?.id === l.project?.id) : S.launches);
+const projectName = (id) => S.settings.projects?.find((p) => p.id === id)?.name ?? "";
+const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" }, project: "" };
 
 // --- Data ---
 async function api(path, opts = {}) {
@@ -45,10 +57,10 @@ async function api(path, opts = {}) {
 }
 const post = (path, data, method = "POST") => api(path, { method, body: JSON.stringify(data) });
 async function loadList() {
-	S.launches = (await api("/api/launches")).body;
+	S.launches = (await api("api/launches")).body;
 }
 async function open(id) {
-	const { body } = await api(`/api/launches/${id}`);
+	const { body } = await api(`api/launches/${id}`);
 	S.launch = body.launch;
 	S.version = body.version;
 	S.dirty = false;
@@ -68,7 +80,7 @@ async function save() {
 	S.saving = true;
 	S.dirty = false;
 	try {
-		const r = await fetch(`/api/launches/${S.launch.id}`, { method: "PUT", headers: { "content-type": "application/json", "x-base-version": S.version ?? "" }, body: JSON.stringify(S.launch) });
+		const r = await fetch(`api/launches/${S.launch.id}`, { method: "PUT", headers: { "content-type": "application/json", "x-base-version": S.version ?? "" }, body: JSON.stringify(S.launch) });
 		const b = await r.json();
 		if (r.status === 409) {
 			S.launch = b.launch;
@@ -94,15 +106,15 @@ async function save() {
 async function poll() {
 	try {
 		if (S.launch && !S.dirty && !S.saving) {
-			const { body } = await api(`/api/launches/${S.launch.id}/version`);
+			const { body } = await api(`api/launches/${S.launch.id}/version`);
 			if (body.version && body.version !== S.version) {
 				await open(S.launch.id);
 				await loadList();
-				toast(S.request?.deliveredAt ? "Claude updated the launch." : "The launch was updated.");
+				toast(S.request?.deliveredAt || S.request?.status === "running" ? "Claude updated the launch." : "The launch was updated.");
 				render();
 			}
 		}
-		const { body } = await api("/api/request");
+		const { body } = await api(`api/request?launchId=${encodeURIComponent(S.launch?.id ?? "")}`);
 		const prev = JSON.stringify(S.request);
 		S.request = body && body.launchId === S.launch?.id && Date.now() - body.at < 12 * 3600e3 ? body : null;
 		if (JSON.stringify(S.request) !== prev) renderAsk();
@@ -135,6 +147,10 @@ const countdown = (l) => {
 function render() {
 	const l = S.launch;
 	document.body.classList.toggle("portfolio", !l || S.portfolio);
+	document.body.classList.toggle("web", WEB());
+	document.body.classList.toggle("readonly", RO());
+	$("#newLaunch").hidden = RO();
+	$("#settingsBtn").hidden = RO();
 	$("#launchSel").innerHTML = `<option value="">All launches…</option>${S.launches.map((x) => `<option value="${x.id}"${x.id === l?.id && !S.portfolio ? " selected" : ""}>${esc(x.name)}</option>`).join("")}`;
 	for (const el of ["#launchName", "#launchStatus", "#shareBtn", "#tabs"]) $(el).hidden = !l || S.portfolio;
 	if (l) {
@@ -145,11 +161,19 @@ function render() {
 	$("#stage").innerHTML = !l || S.portfolio ? viewPortfolio() : `<div class="view">${VIEWS[S.tab]()}</div>`;
 	$("#stage").scrollTop = scroll;
 	refreshSide();
+	lock();
+}
+// Clients see everything but can't change it. The server refuses their writes either way.
+function lock() {
+	if (!RO()) return;
+	for (const el of document.querySelectorAll("#stage input, #stage select, #stage textarea, #launchName, #launchStatus")) if (!el.dataset.filter && !el.matches("[data-portfolio-project]")) el.disabled = true;
+	for (const el of document.querySelectorAll("#stage [data-act]")) if (!VIEW_ACTS.has(el.dataset.act)) el.hidden = true;
+	for (const el of document.querySelectorAll("#stage [data-ask]")) el.hidden = true;
 }
 function refreshSide() {
 	const l = S.launch;
 	if (!l || S.portfolio) return;
-	const c = checks(l, S.launches);
+	const c = checks(l, sameProject(l));
 	const p = progress(l);
 	const r = readiness(l);
 	const w = workload(l);
@@ -160,15 +184,21 @@ function refreshSide() {
 	renderAsk();
 }
 function renderAsk() {
-	const mine = TAB_ASKS[S.tab] ?? ["review"];
-	const rest = Object.keys(ASK).filter((k) => !mine.includes(k));
+	const kinds = askKinds();
+	const mine = (TAB_ASKS[S.tab] ?? ["review"]).filter((k) => kinds.includes(k));
+	const rest = kinds.filter((k) => !mine.includes(k));
 	$("#askBtns").innerHTML = mine.map((k, i) => `<button data-ask="${k}" class="${i === 0 ? "primary" : ""}">${ASK[k]}${k === "assets" && S.picked.size ? ` (${S.picked.size})` : ""}</button>`).join("") + `<select data-ask-select class="ask-more"><option value="">Other requests…</option>${rest.map((k) => `<option value="${k}">${ASK[k]}</option>`).join("")}</select>`;
 	const r = S.request;
 	const el = $("#askState");
 	if (!r) return (el.hidden = true);
 	el.hidden = false;
-	el.className = `ask-state ${r.deliveredAt ? "got" : "queued"}`;
 	const label = ASK[r.kind] ?? (r.kind === "share" ? "Publish share link" : r.kind);
+	if (WEB()) {
+		el.className = `ask-state ${r.status === "running" ? "queued" : r.status === "done" ? "got" : "failed"}`;
+		el.innerHTML = r.status === "running" ? `<b>Claude is working on “${esc(label)}”.</b> Changes appear here when it's done, usually within a couple of minutes.` : r.status === "done" ? `<b>Claude finished “${esc(label)}”.</b> ${esc(r.summary ?? "")} <button class="sm" data-ask-clear>Dismiss</button>` : `<b>“${esc(label)}” didn't finish.</b> ${esc(r.error || "Try again.")} <button class="sm" data-ask-clear>Dismiss</button>`;
+		return;
+	}
+	el.className = `ask-state ${r.deliveredAt ? "got" : "queued"}`;
 	el.innerHTML = r.deliveredAt ? `<b>Claude picked up “${esc(label)}”.</b> Changes appear here as they're saved. <button class="sm" data-ask-clear>Dismiss</button>` : `<b>Queued: “${esc(label)}”.</b> Switch to Claude Code and send any message (“go” is enough). The request goes with it. <button class="sm" data-ask-clear>Cancel</button>`;
 }
 
@@ -310,10 +340,10 @@ function viewStaffing() {
 	const max = Math.max(1, ...w.people.map((p) => p.open));
 	const peopleOpts = (sel) => `<option value="">Unstaffed</option>${l.people.map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}`;
 	return `<h2>Staffing <small>who owns each role, and what that puts on their plate</small></h2>
-	<p class="lede">Staff a role and every checklist item for it gets that person as owner, unless an item names someone else. The team plan and the Linear sync assign tasks from this. Emails must match their Linear account.</p>
+	<p class="lede">Staff a role and every checklist item for it gets that person as owner, unless an item names someone else. ${WEB() ? "The team plan and the tasks CSV assign tasks from this." : "The team plan and the Linear sync assign tasks from this. Emails must match their Linear account."}</p>
 	<div class="card"><h3 style="margin-top:0">Team <small>${l.people.length} people</small></h3>
-		<table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Capacity</th><th>Roles</th><th>Open</th><th>Linear</th><th></th></tr></thead><tbody>
-		${l.people.map((p, i) => { const x = w.people.find((y) => y.id === p.id); return `<tr><td>${inp(`people.${i}.name`, "Name")}</td><td>${inp(`people.${i}.email`, "name@company.com", 'type="email"')}</td><td>${inp(`people.${i}.title`, "Title")}</td><td style="width:90px">${inp(`people.${i}.capacity`, "e.g. 50%")}</td><td class="mono">${esc(x.roles.join(", ")) || "—"}</td><td class="mono">${x.open}${x.overdue ? ` <span class="v-no-go">(${x.overdue} late)</span>` : ""}</td><td class="mono">${p.linearUserId ? "✓ matched" : "—"}</td><td><button class="ghost sm" data-act="rmPerson" data-id="${p.id}" title="Remove">✕</button></td></tr>`; }).join("")}
+		<table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Capacity</th><th>Roles</th><th>Open</th>${WEB() ? "" : "<th>Linear</th>"}<th></th></tr></thead><tbody>
+		${l.people.map((p, i) => { const x = w.people.find((y) => y.id === p.id); return `<tr><td>${inp(`people.${i}.name`, "Name")}</td><td>${inp(`people.${i}.email`, "name@company.com", 'type="email"')}</td><td>${inp(`people.${i}.title`, "Title")}</td><td style="width:90px">${inp(`people.${i}.capacity`, "e.g. 50%")}</td><td class="mono">${esc(x.roles.join(", ")) || "—"}</td><td class="mono">${x.open}${x.overdue ? ` <span class="v-no-go">(${x.overdue} late)</span>` : ""}</td>${WEB() ? "" : `<td class="mono">${p.linearUserId ? "✓ matched" : "—"}</td>`}<td><button class="ghost sm" data-act="rmPerson" data-id="${p.id}" title="Remove">✕</button></td></tr>`; }).join("")}
 		<tr><td colspan="8"><button class="sm" data-act="addPerson">+ Add person</button></td></tr></tbody></table>
 	</div>
 	<div class="grid2">
@@ -325,10 +355,10 @@ function viewStaffing() {
 			${w.unassigned.length ? `<p class="small" style="margin-top:12px"><a href="#" data-who="unassigned" class="v-no-go">${w.unassigned.length} items have no owner →</a></p>` : ""}
 		</div>
 	</div>
-	<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
+	${WEB() ? `<div class="card"><h3 style="margin-top:0">Team launch plan</h3><p class="hint">Goals, milestones, roles and each person's tasks with due dates, to present to the team. Everyone on this portal project can open it.</p><div class="row"><button class="primary" data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div></div>` : `<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
 		<p class="hint">Sync creates a Linear project for this launch (via Composio), with a milestone per phase and one issue per open task, assigned to its owner, with the due date. Re-syncing updates existing issues instead of duplicating them, and issues closed in Linear tick off here, with the issue as evidence.</p>
-		<div class="row">${ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : ""}<button class="primary" data-ask="sync">${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button><button data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="/api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div>
-	</div>`;
+		<div class="row">${ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : ""}<button class="primary" data-ask="sync">${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button><button data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div>
+	</div>`}`;
 }
 
 const VIDEO_STEPS = [["video-brief", "Brief"], ["video-script", "Script"], ["ui-freeze", "UI freeze"], ["video-production", "Production"], ["video-review", "Review"], ["video-final", "Master"], ["video-cutdowns", "Cutdowns"], ["video-handoff", "Hand-off"], ["social-sequence", "Launch"], ["video-performance", "Performance"]];
@@ -529,7 +559,7 @@ function viewRetro() {
 }
 
 function viewPortfolio() {
-	const ls = S.launches;
+	const ls = S.launches.filter((l) => !S.project || l.project?.id === S.project);
 	const start = addDays(today(), -14);
 	const days = 112;
 	const x = (d) => (100 * daysBetween(start, d)) / days;
@@ -539,17 +569,17 @@ function viewPortfolio() {
 		let lane = lanes.findIndex((end) => end < left);
 		if (lane < 0) lane = lanes.length;
 		lanes[lane] = left + 17;
-		const clash = ls.some((o) => o.id !== l.id && (o.tier ?? 3) <= 2 && (l.tier ?? 3) <= 2 && Math.abs(daysBetween(o.t0, l.t0)) <= 7);
+		const clash = ls.some((o) => o.id !== l.id && (o.project?.id ?? "") === (l.project?.id ?? "") && (o.tier ?? 3) <= 2 && (l.tier ?? 3) <= 2 && Math.abs(daysBetween(o.t0, l.t0)) <= 7);
 		return { ...l, left, lane, clash };
 	});
 	const months = Array.from({ length: 8 }, (_, i) => addDays(start, i * 14));
 	return `<div class="view"><p class="eyebrow">Launch portfolio</p><h1 class="title">All launches</h1>
 	<p class="lede">One calendar for every launch, so T1s and T2s don't land on top of each other. Red outlines mark launches within 7 days of another T1/T2.</p>
-	<div class="row" style="margin-top:12px"><button class="primary" data-act="new">New launch</button></div>
+	<div class="row" style="margin-top:12px"><button class="primary" data-act="new">New launch</button>${WEB() ? `<select data-portfolio-project style="width:auto">${opt([["", "All projects"], ...(S.settings.projects ?? []).map((p) => [p.id, p.name])], S.project)}</select>` : ""}</div>
 	<div class="cal"><div class="cal-head">${months.map((d) => `<span>${fmtDate(d)}</span>`).join("")}</div>
 		<div class="cal-body" style="height:${Math.max(1, lanes.length) * 32 + 16}px"><div class="today" style="left:${x(today())}%"></div>
 		${placed.map((l) => `<div class="cal-ev t${l.tier ?? 3} ${l.clash ? "clash" : ""}" style="left:${l.left}%;top:${8 + l.lane * 32}px" data-open="${l.id}" title="${esc(l.name)} · ${fmtDate(l.t0)}">${tierPill(l.tier)} ${esc(l.name)}</div>`).join("")}</div></div>
-	<div class="card">${ls.length ? `<table class="tbl"><thead><tr><th>T-0</th><th>Launch</th><th>Tier</th><th>DRI</th><th>Status</th><th>Done</th><th>Overdue</th></tr></thead><tbody>${ls.map((l) => `<tr class="click" data-open="${l.id}"><td class="mono">${fmtDate(l.t0)}</td><td><b>${esc(l.name)}</b></td><td>${tierPill(l.tier)}</td><td>${esc(l.dri) || '<span class="v-no-go">—</span>'}</td><td class="mono">${esc(LAUNCH_STATUS.find(([k]) => k === l.status)?.[1])}</td><td class="mono">${l.pct}%</td><td class="mono ${l.overdue ? "v-no-go" : ""}">${l.overdue}</td></tr>`).join("")}</tbody></table>` : `<div class="empty"><b>No launches yet</b>Start one with New launch.</div>`}</div></div>`;
+	<div class="card">${ls.length ? `<table class="tbl"><thead><tr><th>T-0</th><th>Launch</th>${WEB() ? "<th>Project</th>" : ""}<th>Tier</th><th>DRI</th><th>Status</th><th>Done</th><th>Overdue</th></tr></thead><tbody>${ls.map((l) => `<tr class="click" data-open="${l.id}"><td class="mono">${fmtDate(l.t0)}</td><td><b>${esc(l.name)}</b></td>${WEB() ? `<td>${esc(l.project?.name || projectName(l.project?.id))}</td>` : ""}<td>${tierPill(l.tier)}</td><td>${esc(l.dri) || '<span class="v-no-go">—</span>'}</td><td class="mono">${esc(LAUNCH_STATUS.find(([k]) => k === l.status)?.[1])}</td><td class="mono">${l.pct}%</td><td class="mono ${l.overdue ? "v-no-go" : ""}">${l.overdue}</td></tr>`).join("")}</tbody></table>` : `<div class="empty"><b>No launches yet</b>${RO() ? "Launches for your projects appear here once GrowthCast starts one." : "Start one with New launch."}</div>`}</div></div>`;
 }
 
 // --- Dialogs ---
@@ -569,17 +599,38 @@ function dialog(html, onSubmit) {
 	};
 }
 function newLaunchDialog() {
-	dialog(`<h2>New launch</h2>${field("Name", '<input name="name" required placeholder="e.g. Invoices from your domain">')}${field("T-0 launch date", `<input name="t0" type="date" required value="${addDays(today(), 35)}">`)}<p class="hint">Due dates count back from T-0. You'll score the tier next.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Create</button></div>`, async (fd) => {
-		const { body } = await post("/api/launches", { name: fd.get("name"), t0: fd.get("t0") });
+	const projects = S.settings.projects ?? [];
+	if (WEB() && !projects.length) return toast("You aren't assigned to any portal projects yet.");
+	const pick = WEB() ? field("Project <em>everyone on it can see this launch</em>", `<select name="projectId" required>${opt([["", "Choose a project…"], ...projects.map((p) => [p.id, p.name])], S.project || (projects.length === 1 ? projects[0].id : ""))}</select>`) : "";
+	dialog(`<h2>New launch</h2>${pick}${field("Name", '<input name="name" required placeholder="e.g. Invoices from your domain">')}${field("T-0 launch date", `<input name="t0" type="date" required value="${addDays(today(), 35)}">`)}<p class="hint">Due dates count back from T-0. You'll score the tier next.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Create</button></div>`, async (fd) => {
+		const { body } = await post("api/launches", { name: fd.get("name"), t0: fd.get("t0"), ...(WEB() ? { projectId: fd.get("projectId") } : {}) });
 		await loadList();
 		S.tab = "brief";
 		location.hash = body.launch.id;
 	});
 }
+async function projectContextDialog() {
+	const projects = S.settings.projects ?? [];
+	const pid = S.launch?.project?.id || S.project || projects[0]?.id || "";
+	if (!pid) return toast("You aren't assigned to any portal projects yet.");
+	const load = async (id) => (await api(`api/context?projectId=${encodeURIComponent(id)}`)).body;
+	const when = (c) => (c.updatedAt ? `Last changed ${c.updatedAt.slice(0, 16).replace("T", " ")}${c.updatedBy ? ` by ${c.updatedBy}` : ""}` : "Not written yet.");
+	const c = await load(pid);
+	dialog(`<h2>Company context</h2><p class="hint">Claude reads this with every request for the project's launches: ICP, plans and pricing, channels, voice, rules, and anything else it should know.</p>${field("Project", `<select name="projectId" data-context-project>${opt(projects.map((p) => [p.id, p.name]), pid)}</select>`)}${field("Context (Markdown)", `<textarea name="body" rows="16" placeholder="Company, ICP, plans and pricing, channels, voice and rules">${esc(c.body)}</textarea>`)}<p class="hint" data-context-at>${esc(when(c))}</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>`, async (fd) => {
+		await post("api/context", { projectId: fd.get("projectId"), body: fd.get("body") }, "PUT");
+		toast("Context saved.");
+	});
+	$("[data-context-project]").onchange = async (e) => {
+		const next = await load(e.target.value);
+		$("#dlg textarea[name=body]").value = next.body;
+		$("[data-context-at]").textContent = when(next);
+	};
+}
 function settingsDialog() {
+	if (WEB()) return projectContextDialog().catch((e) => toast(e.message));
 	const s = S.settings;
 	dialog(`<h2>Settings</h2>${field("Company", `<input name="company" value="${esc(s.company)}" placeholder="e.g. Durable">`)}${field("Company context file <em>Claude reads it with every request</em>", `<input name="contextFile" value="${esc(s.contextFile)}" placeholder="~/Code/durable/launches/launch-context.md">`)}${field("Export folder <em>Markdown packs land in &lt;folder&gt;/&lt;yyyy-mm&gt;-&lt;slug&gt;/</em>", `<input name="exportDir" value="${esc(s.exportDir)}" placeholder="~/Code/durable/launches">`)}<div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>`, async (fd) => {
-		S.settings = (await post("/api/settings", Object.fromEntries(fd), "PUT")).body;
+		S.settings = (await post("api/settings", Object.fromEntries(fd), "PUT")).body;
 		toast("Settings saved.");
 	});
 }
@@ -587,7 +638,11 @@ function shareDialog() {
 	dialog(`<h2>Share “${esc(S.launch.name)}”</h2>
 	<p class="hint">The team launch plan is the one to present: milestones, roles, and each person's tasks with due dates. The full report covers the brief, tier, readiness, message house, checklist and measurement.</p>
 	<div style="display:grid;gap:8px;margin-top:12px">
-		<button value="plan">Open the team launch plan (who does what)</button>
+		${WEB() ? `<button value="plan">Open the team launch plan (who does what)</button>
+		<button value="csv">Download tasks CSV (owner, role, due, status)</button>
+		<button value="report">Open the full launch report</button>
+		<p class="hint">Everyone on the portal project can open this launch in the portal.</p>
+	</div><div class="actions"><button value="cancel" formnovalidate>Close</button></div>` : `<button value="plan">Open the team launch plan (who does what)</button>
 		<button value="csv">Download tasks CSV (owner, role, due, status)</button>
 		<button value="publishPlan">Publish the team plan as a private link (asks Claude)</button>
 		<button value="sync">Sync tasks to Linear (asks Claude, via Composio)</button>
@@ -595,14 +650,14 @@ function shareDialog() {
 		<button value="report">Open the full launch report</button>
 		<button value="export">Export Markdown pack + report to the export folder</button>
 		<button class="primary" value="publish">Publish a private share link (asks Claude)</button>
-	</div><div class="actions"><button value="cancel" formnovalidate>Close</button></div>`, async (_, v) => {
+	</div><div class="actions"><button value="cancel" formnovalidate>Close</button></div>`}`, async (_, v) => {
 		await save();
-		if (v === "report") window.open(`/api/launches/${S.launch.id}/report.html`, "_blank");
-		if (v === "plan") window.open(`/api/launches/${S.launch.id}/team-plan.html`, "_blank");
-		if (v === "csv") location.href = `/api/launches/${S.launch.id}/tasks.csv`;
+		if (v === "report") window.open(`api/launches/${S.launch.id}/report.html`, "_blank");
+		if (v === "plan") window.open(`api/launches/${S.launch.id}/team-plan.html`, "_blank");
+		if (v === "csv") location.href = `api/launches/${S.launch.id}/tasks.csv`;
 		if (v === "publishPlan") await ask("plan");
 		if (v === "sync") await ask("sync");
-		if (v === "export") toast(`Exported to ${(await post(`/api/launches/${S.launch.id}/export`, {})).body.dir}`);
+		if (v === "export") toast(`Exported to ${(await post(`api/launches/${S.launch.id}/export`, {})).body.dir}`);
 		if (v === "publish") await ask("share");
 	});
 }
@@ -612,9 +667,10 @@ async function ask(kind, assetIds) {
 	await save();
 	const note = $("#askNote").value.trim();
 	if (kind === "intake" && !note && !S.launch.brief.description) return toast("Describe the launch or paste a PRD link in the note first.");
-	S.request = (await post("/api/request", { kind, launchId: S.launch.id, note, assetIds: assetIds ?? [...S.picked] })).body;
+	if (RO() || !askKinds().includes(kind)) return toast("That request isn't available here.");
+	S.request = (await post("api/request", { kind, launchId: S.launch.id, note, assetIds: assetIds ?? [...S.picked] })).body;
 	renderAsk();
-	toast("Queued. Send any message in Claude Code to start it.");
+	toast(WEB() ? "Claude is on it. Changes appear here when it's done." : "Queued. Send any message in Claude Code to start it.");
 }
 function goto(itemId, area) {
 	if (!itemId) {
@@ -722,7 +778,7 @@ const ACT = {
 		markDirty();
 		render();
 	},
-	teamPlan: () => save().then(() => window.open(`/api/launches/${S.launch.id}/team-plan.html`, "_blank")),
+	teamPlan: () => save().then(() => window.open(`api/launches/${S.launch.id}/team-plan.html`, "_blank")),
 };
 
 document.addEventListener("click", (e) => {
@@ -735,10 +791,10 @@ document.addEventListener("click", (e) => {
 		return render();
 	}
 	const a = t.closest("[data-act]");
-	if (a && ACT[a.dataset.act]) return e.preventDefault(), ACT[a.dataset.act](a);
+	if (a && ACT[a.dataset.act]) return e.preventDefault(), RO() && !VIEW_ACTS.has(a.dataset.act) ? undefined : ACT[a.dataset.act](a);
 	const askBtn = t.closest("[data-ask]");
 	if (askBtn) return ask(askBtn.dataset.ask).catch((err) => toast(err.message));
-	if (t.closest("[data-ask-clear]")) return api("/api/request", { method: "DELETE" }).then(() => ((S.request = null), renderAsk()));
+	if (t.closest("[data-ask-clear]")) return api(`api/request?launchId=${encodeURIComponent(S.launch?.id ?? "")}`, { method: "DELETE" }).then(() => ((S.request = null), renderAsk()));
 	const stp = t.closest("[data-goto-step]");
 	if (stp) {
 		const el = document.getElementById(`it-${stp.dataset.gotoStep}`);
@@ -770,6 +826,7 @@ document.addEventListener("click", (e) => {
 });
 function onField(e, commit) {
 	const el = e.target;
+	if (RO() && !el.dataset.filter) return;
 	const val = el.type === "checkbox" ? el.checked : el.value;
 	if (el.dataset.bind) {
 		setPath(S.launch, el.dataset.bind, val);
@@ -808,6 +865,8 @@ function onField(e, commit) {
 document.addEventListener("input", (e) => onField(e, false));
 document.addEventListener("change", (e) => {
 	if (e.target.id === "launchSel") return (location.hash = e.target.value || "portfolio");
+	if (e.target.matches("[data-portfolio-project]")) return (S.project = e.target.value), render();
+	if (e.target.matches("[data-context-project]")) return;
 	if (e.target.matches("[data-ask-select]")) return e.target.value && ask(e.target.value).catch((err) => toast(err.message));
 	if (e.target.dataset.filter === "q") return;
 	onField(e, true);
@@ -853,9 +912,14 @@ async function route() {
 window.addEventListener("hashchange", route);
 window.addEventListener("beforeunload", () => S.dirty && save());
 (async () => {
-	const qt = new URLSearchParams(location.search).get("tab");
+	const qs = new URLSearchParams(location.search);
+	const qt = qs.get("tab");
 	if (TABS.some(([k]) => k === qt)) S.tab = qt;
-	S.settings = (await api("/api/settings")).body;
+	S.settings = (await api("api/settings")).body;
+	// In the portal, the proxy answers api/projects with the person's projects (admins: every project).
+	if (WEB()) S.settings.projects = (await api("api/projects")).body.projects ?? [];
+	// The portal links a project's launches with ?project=<id>.
+	if (WEB() && projectName(qs.get("project") ?? "")) S.project = qs.get("project");
 	await loadList();
 	await route();
 	setInterval(poll, 1500);
