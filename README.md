@@ -5,11 +5,11 @@ with a local studio where you work through each launch and ask Claude to do the 
 
 ## Install
 ```
-/plugin marketplace add ~/product-release-checklist     # or the GitHub repo once pushed
+/plugin marketplace add ejwhite7/product-release-checklist
 /plugin install product-release-checklist@growthcast
 /product-release-checklist:open
 ```
-The studio runs at http://127.0.0.1:4730. It needs Node 20+ and has no dependencies.
+The studio runs at http://127.0.0.1:4730. It needs Node 20+ and has no npm dependencies.
 
 ## The studio
 | Tab | What it's for |
@@ -53,6 +53,29 @@ node tools/studio.mjs list | new "<name>" --t0 yyyy-mm-dd | validate <id> | expo
 node tools/studio.mjs sync-plan <id> | link <id> <result.json>
 npm test
 ```
+
+## What this plugin runs, stores and sends
+- **Local server.** `/product-release-checklist:open` starts `node tools/studio.mjs` on `127.0.0.1:4730`. It binds to
+  loopback only and refuses requests whose `Host` header isn't localhost. With `--open` it opens that URL in your default
+  browser (`open` / `xdg-open` / `explorer`). It makes no outbound network requests and holds no API keys.
+- **Files.** It reads and writes only `~/.product-release-checklist/` (launches, settings, a queued `request.json`) and,
+  when you export, the export folder you set in Settings.
+- **Hook.** A `UserPromptSubmit` hook runs `node tools/studio-context.mjs`. It reads `~/.product-release-checklist/request.json`
+  and, if a studio request is waiting (and under 12 hours old), adds it to your next prompt once, then clears it. It
+  sends nothing anywhere.
+- **Exported pages** (`report.html`, `team-plan.html`) load the Manrope and DM Mono fonts from Google Fonts when opened.
+  The studio itself uses the bundled fonts in `studio/fonts/`.
+- **Third-party services, only when you ask.** *Sync to Linear* has Claude call Linear through your own Composio MCP
+  connection (project, milestones, issues, assignee emails, due dates). Claude previews and asks before the first write.
+  *Publish* asks Claude to publish a private claude.ai Artifact. *Plan or make the video* can use a video-generation plugin
+  you have installed, after confirming costs. The plugin bundles no MCP servers and no credentials.
+- **Changelog workflow template.** `skills/changelog-automation/reference/changelog-workflow.yml` is a GitHub Actions
+  template you copy into your own repo. It is not run by the plugin. Once installed there, it sends release notes to the
+  Anthropic API with your `ANTHROPIC_API_KEY` secret and opens a PR on your marketing site repo.
+- **No telemetry.** Nothing about you or your launches leaves your machine unless you trigger one of the actions above.
+
+## License
+MIT. See [LICENSE](LICENSE).
 
 ## Also included
 - Skills: `product-release-checklist` (studio + schema), `launch-kickoff`, `launch-messaging`, `launch-assets`, `launch-readiness`, `launch-measure`, `launch-retro`, `launch-video`, `launch-linear-sync` (Composio → Linear), `changelog-automation` (repo releases → curated marketing-site changelog)

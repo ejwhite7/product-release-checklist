@@ -8,6 +8,7 @@
     "url": "https://growthcast.app"
   },
   "homepage": "https://growthcast.app",
+  "repository": "https://github.com/ejwhite7/product-release-checklist",
   "license": "MIT",
   "keywords": [
     "product-launch",
