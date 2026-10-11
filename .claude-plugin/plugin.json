@@ -1,0 +1,10 @@
+{
+  "name": "product-release-checklist",
+  "displayName": "Product Release Checklist by GrowthCast",
+  "version": "0.1.0",
+  "description": "Plan, coordinate, launch, and measure product announcements across founder narrative, social, in-app, docs, paid, influencer, lifecycle, changelog, support, and adoption analytics.",
+  "author": { "name": "GrowthCast", "url": "https://growthcast.app" },
+  "homepage": "https://growthcast.app",
+  "license": "MIT",
+  "keywords": ["product-launch", "product-marketing", "growth", "go-to-market", "changelog", "feature-adoption"]
+}
