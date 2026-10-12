@@ -302,7 +302,7 @@ function viewChecklist() {
 	const roles = [...new Set(p.items.map((i) => i.role))];
 	const whoOpts = [["", "Everyone"], ...l.people.map((x) => [`p:${x.id}`, x.name || x.email]), ["unassigned", "Unassigned"], ...roles.map((r) => [`r:${r}`, `Role: ${r}`])];
 	return `<h2>Checklist <small>${p.done}/${p.total} done · tier ${tierOf(l) ? `T${tierOf(l)}` : "unscored (showing T1)"} · due dates count back from T-0 ${fmtDate(l.t0)}</small></h2>
-	<p class="lede">Done means there's an evidence link. Items marked done without one count as open. Clear a due date to return it to the plan.</p>
+	<p class="lede">Add an evidence link where it helps; it's optional. Clear a due date to return it to the plan.</p>
 	<div class="filters">
 		<div class="seg">${[["all", "All"], ["open", "Open"], ["overdue", "Overdue"], ["gates", "Gates"]].map(([k, lab]) => `<button data-act="show" data-v="${k}" class="${f.show === k ? "on" : ""}">${lab}</button>`).join("")}</div>
 		<select data-filter="phase"><option value="">All phases</option>${opt(PHASES.map((x) => [x.id, x.label]), f.phase)}</select>
@@ -314,7 +314,7 @@ function viewChecklist() {
 		const all = p.items.filter((i) => i.phase === ph.id);
 		const its = shown.filter((i) => i.phase === ph.id);
 		if (!its.length) return "";
-		const done = all.filter((i) => (i.status === "done" && !i.noEvidence) || ["waived", "na"].includes(i.status)).length;
+		const done = all.filter((i) => ["done", "waived", "na"].includes(i.status)).length;
 		return `<div class="phase"><div class="phase-head"><h3>${esc(ph.label)} <small>${esc(ph.window)}</small></h3><div class="bar"><i style="width:${(100 * done) / all.length}%"></i></div><span class="mono muted">${done}/${all.length}</span></div>
 		${its.map(itemRow).join("")}</div>`;
 	}).join("") || `<div class="empty"><b>Nothing matches</b>Change the filters above.</div>`}
@@ -324,10 +324,10 @@ function itemRow(i) {
 	const d = daysBetween(S.launch.t0, i.due);
 	return `<div class="item st-${i.status} ${i.overdue ? "late" : ""}" id="it-${i.id}">
 		<select class="stsel" data-v="${i.status}" data-item="${i.id}" data-f="status" data-rerender>${opt(ITEM_STATUS, i.status)}</select>
-		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : ""}<small>${esc(i.role)}${i.person && !i.owner ? ` → ${esc(i.person.name)}` : ""} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.issue ? ` · <a href="${esc(i.issue.url)}" target="_blank" rel="noopener">${esc(i.issue.identifier || "Linear")}</a>` : ""}${i.noEvidence ? ' · <span class="v-go-waivers">needs evidence</span>' : ""}</small></div>
+		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : ""}<small>${esc(i.role)}${i.person && !i.owner ? ` → ${esc(i.person.name)}` : ""} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.issue ? ` · <a href="${esc(i.issue.url)}" target="_blank" rel="noopener">${esc(i.issue.identifier || "Linear")}</a>` : ""}</small></div>
 		<input list="owners" data-item="${i.id}" data-f="owner" value="${esc(i.owner)}" placeholder="${esc(i.person?.name || i.role)}" title="Leave blank to use whoever is staffed on ${esc(i.role)}">
 		<input type="date" class="due ${i.overdue ? "late" : ""}" data-item="${i.id}" data-f="due" data-rerender value="${esc(i.due)}">
-		<input class="ev ${i.noEvidence ? "miss" : ""}" data-item="${i.id}" data-f="evidence" value="${esc(i.evidence)}" placeholder="Evidence link">
+		<input class="ev" data-item="${i.id}" data-f="evidence" value="${esc(i.evidence)}" placeholder="Evidence link (optional)">
 		<button class="ghost sm more" data-act="note" data-id="${i.id}" title="Note${i.status === "waived" ? " (waiver reason)" : ""}">${i.note ? "✎" : "…"}</button>
 		${S.notes.has(i.id) || (i.status === "waived" && !i.note) ? `<textarea class="note" rows="2" data-item="${i.id}" data-f="note" placeholder="${i.status === "waived" ? "Why the DRI waived this" : "Note"}">${esc(i.note)}</textarea>` : ""}
 	</div>`;

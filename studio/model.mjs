@@ -407,7 +407,7 @@ export function itemsFor(l) {
 			const open = !["done", "waived", "na"].includes(st.status);
 			const gate = i.gate === true || (i.gate === 1 && tier === 1);
 			const person = ownerOf(l, i.role, st.owner);
-			return { ...i, ...st, def: i, gate, planned, due, open, overdue: open && due < today(), noEvidence: st.status === "done" && !st.evidence.trim(), person, ownerName: person?.name || st.owner || "", issue: l.sync.linear.issues[i.id] ?? null };
+			return { ...i, ...st, def: i, gate, planned, due, open, overdue: open && due < today(), person, ownerName: person?.name || st.owner || "", issue: l.sync.linear.issues[i.id] ?? null };
 		})
 		.sort((a, b) => PHASES.findIndex((p) => p.id === a.phase) - PHASES.findIndex((p) => p.id === b.phase) || a.due.localeCompare(b.due));
 }
@@ -416,7 +416,7 @@ export const assetsFor = (l) => ASSETS.filter((a) => a.tiers.includes(effectiveT
 export function progress(l) {
 	const items = itemsFor(l);
 	const counted = items.filter((i) => i.status !== "na");
-	const done = counted.filter((i) => (i.status === "done" && !i.noEvidence) || i.status === "waived").length;
+	const done = counted.filter((i) => ["done", "waived"].includes(i.status)).length;
 	return { total: counted.length, done, pct: counted.length ? Math.round((100 * done) / counted.length) : 0, overdue: items.filter((i) => i.overdue).length, items };
 }
 
@@ -469,9 +469,6 @@ export function checks(l, others = []) {
 	}
 	if (l.sync.linear.projectId && l.people.some((p) => w.people.find((x) => x.id === p.id)?.open && !p.email)) add("info", "Staffing", "Some owners have no email, so their Linear issues will be unassigned.");
 	const p = progress(l);
-	for (const i of p.items) {
-		if (i.noEvidence) add("warn", "Checklist", `Marked done without evidence: ${i.text}`, i.id);
-	}
 	if (p.overdue) add("warn", "Checklist", `${p.overdue} item${p.overdue > 1 ? "s are" : " is"} overdue.`);
 	return out;
 }
@@ -480,7 +477,7 @@ export function checks(l, others = []) {
 export function readiness(l) {
 	const items = itemsFor(l);
 	const by = Object.fromEntries(items.map((i) => [i.id, i]));
-	const ok = (id) => !by[id] || (by[id].status === "done" && !by[id].noEvidence) || by[id].status === "waived";
+	const ok = (id) => !by[id] || ["done", "waived"].includes(by[id].status);
 	const gates = [
 		{ id: "rollout", label: "Feature at the agreed rollout for the announced audience", ok: ok("rollout-ready") && l.rollout.full !== false, item: "rollout-ready" },
 		{ id: "events", label: "Primary-metric events verified in production", ok: ok("events") && l.measure.events.filter((e) => e.name).every((e) => e.prod), item: "events" },

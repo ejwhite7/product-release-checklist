@@ -143,7 +143,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .stsel[data-v="doing"] { background: var(--accent-soft); color: var(--accent-text); }
 .stsel[data-v="waived"] { color: var(--warn); border-color: var(--warn); }
 .item .due.late { color: var(--error); border-color: var(--error); }
-.item .ev.miss { border-color: var(--warn); }
 .item .note { grid-column: 2 / -1; }
 .badge { font-family: var(--mono); font-size: 10.5px; padding: 0 6px; border: 1px solid var(--fg); margin-left: 6px; vertical-align: 1px; }
 .badge.claude { border-color: var(--claude); color: var(--claude); }
