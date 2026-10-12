@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.4
+- Delete a launch from the bottom of its Brief tab. In the client portal only owners and admins see it.
+
 ## 0.5.3
 - In the client portal, a new launch records its project's name.
 

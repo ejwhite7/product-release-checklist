@@ -41,6 +41,8 @@ const TAB_ASKS = { overview: ["review", "intake"], brief: ["intake", "tier"], st
 // exports and Artifact links are Claude Code features, so they aren't offered.
 const WEB = () => S.settings.mode === "web";
 const RO = () => WEB() && !S.settings.canEdit;
+// Locally anyone can delete a launch; in the portal only owners and admins can.
+const canDelete = () => !WEB() || S.settings.canDelete === true;
 const askKinds = () => Object.keys(ASK).filter((k) => !WEB() || (S.settings.asks ?? []).includes(k));
 const VIEW_ACTS = new Set(["show", "note", "teamPlan", "openScript"]);
 // Launches that can collide with this one: in the portal, only those in the same client project.
@@ -288,7 +290,9 @@ function viewBrief() {
 			${field("Override", `<select data-act-change="override">${opt([["", "Use score"], ["1", "T1"], ["2", "T2"], ["3", "T3"]], l.tier.override ? String(l.tier.override) : "")}</select>`)}
 		</div>
 		${l.tier.override ? field("Override reason <em>required</em>", inp("tier.overrideReason", "Why the score is wrong for this launch")) : ""}
-	</div>`;
+	</div>
+	${canDelete() ? `<h2 style="margin-top:24px">Delete launch</h2>
+	<div class="card row"><span class="hint" style="flex:1">Removes “${esc(l.name)}”${WEB() ? " for everyone on the project" : " and its file"}. You can't undo this from the studio.</span><button class="danger" data-act="deleteLaunch">Delete launch</button></div>` : ""}`;
 }
 
 function viewChecklist() {
@@ -687,6 +691,18 @@ function goto(itemId, area) {
 }
 const ACT = {
 	new: newLaunchDialog,
+	deleteLaunch: () => {
+		const l = S.launch;
+		dialog(`<h2>Delete “${esc(l.name)}”?</h2><p class="hint">${WEB() ? "Everyone on the project loses access to this launch, its checklist and its plan." : "The launch file is removed from this folder."} You can't undo this from the studio.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="danger" value="ok">Delete launch</button></div>`, async () => {
+			clearTimeout(saveTimer);
+			await api(`api/launches/${l.id}`, { method: "DELETE" });
+			S.launch = null;
+			S.dirty = false;
+			await loadList();
+			toast(`Deleted “${l.name}”.`);
+			location.hash = "portfolio";
+		});
+	},
 	score: (el) => {
 		const k = el.dataset.f, v = Number(el.dataset.v);
 		S.launch.tier.scores[k] = S.launch.tier.scores[k] === v ? null : v;
