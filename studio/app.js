@@ -603,7 +603,7 @@ function newLaunchDialog() {
 	if (WEB() && !projects.length) return toast("You aren't assigned to any portal projects yet.");
 	const pick = WEB() ? field("Project <em>everyone on it can see this launch</em>", `<select name="projectId" required>${opt([["", "Choose a project…"], ...projects.map((p) => [p.id, p.name])], S.project || (projects.length === 1 ? projects[0].id : ""))}</select>`) : "";
 	dialog(`<h2>New launch</h2>${pick}${field("Name", '<input name="name" required placeholder="e.g. Invoices from your domain">')}${field("T-0 launch date", `<input name="t0" type="date" required value="${addDays(today(), 35)}">`)}<p class="hint">Due dates count back from T-0. You'll score the tier next.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Create</button></div>`, async (fd) => {
-		const { body } = await post("api/launches", { name: fd.get("name"), t0: fd.get("t0"), ...(WEB() ? { projectId: fd.get("projectId") } : {}) });
+		const { body } = await post("api/launches", { name: fd.get("name"), t0: fd.get("t0"), ...(WEB() ? { projectId: fd.get("projectId"), projectName: projectName(fd.get("projectId")) } : {}) });
 		await loadList();
 		S.tab = "brief";
 		location.hash = body.launch.id;

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.3
+- In the client portal, a new launch records its project's name.
+
 ## 0.5.2
 - Evidence on checklist items is optional. An item marked done counts as done, with or without a link.
 
