@@ -33,13 +33,12 @@ test("due dates count back from T-0 and avoid weekends", () => {
 	assert.equal(itemsFor(l).find((i) => i.id === "readiness").due, "2026-11-13");
 });
 
-test("done without evidence doesn't count", () => {
+test("done counts without evidence", () => {
 	const l = newLaunch("X", "2026-11-17");
-	l.items.tier = { status: "done", evidence: "" };
 	const before = progress(l).done;
-	assert.ok(checks(l).some((c) => c.item === "tier"));
-	l.items.tier.evidence = "https://x";
+	l.items.tier = { status: "done", evidence: "" };
 	assert.equal(progress(l).done, before + 1);
+	assert.ok(!checks(l).some((c) => c.item === "tier"));
 });
 
 test("readiness gates: NO-GO until gates, items and red-team blockers clear", () => {

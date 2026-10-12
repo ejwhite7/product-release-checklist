@@ -89,8 +89,8 @@ An item's owner is `items.<id>.owner` if it names someone on `people` (by name o
 Stage values are counts ("2100") or percentages ("12%"). Write them as strings.
 
 Rules the studio enforces, so don't fight them:
-- **Done needs evidence.** An item marked `done` without an `evidence` link counts as open. When you complete an item,
-  put a link or a pointer ("Messaging tab, approved 2026-10-20") in `evidence`.
+- **Evidence is optional.** An item counts as done when its status is `done`. Add a link or a pointer ("Messaging tab,
+  approved 2026-10-20") in `evidence` when there is one; don't invent one.
 - **Only the user approves.** Don't set `message.status` to `approved`. Don't mark gate items done for the user unless the
   request says to.
 - **Tier drives scope.** Items and assets are filtered by tier (T1 sees everything). An unscored launch shows the T1 set.

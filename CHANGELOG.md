@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.2
+- Evidence on checklist items is optional. An item marked done counts as done, with or without a link.
+
 ## 0.5.1
 - Inside the client portal, the studio drops its own product name from the top bar.
 
