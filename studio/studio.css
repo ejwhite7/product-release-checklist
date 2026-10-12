@@ -61,7 +61,7 @@ aside.left { background: var(--panel); overflow-y: auto; border-right: 1px solid
 .ask-state button { margin-top: 6px; display: block; }
 .ask-state.failed { background: var(--panel); border: 1px solid var(--error); }
 /* Web mode: inside the GrowthCast client portal, which already shows the brand. Clients view only. */
-body.web .wordmark { display: none; }
+body.web .logo { display: none; }
 body.readonly .left h4:first-of-type, body.readonly #askNote, body.readonly #askBtns, body.readonly #askState { display: none; }
 body.readonly input:disabled, body.readonly select:disabled, body.readonly textarea:disabled { opacity: 1; color: var(--fg); background: transparent; cursor: default; }
 .chk { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
