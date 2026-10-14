@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.1
+- The studio checks for changes as soon as its tab is back in view, so a sync or Claude's work that finished in the background shows up right away.
+
 ## 0.6.0
 - In the client portal, the Staffing tab connects the project's Linear workspace through a Composio Connect link (the person picks the workspace on Composio's page) and syncs launches to it: a project, phase milestones and one issue per open task, assigned by email, with closed issues ticking off the checklist.
 - Linear issue descriptions no longer ask for an evidence link.
