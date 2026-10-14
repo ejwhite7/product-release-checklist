@@ -3,7 +3,7 @@
 // short pause. The server file is the source of truth: when its version changes underneath (Claude edited it), the
 // studio reloads it. Ask Claude queues a request that goes to Claude Code with the user's next message there.
 // The same app runs in the GrowthCast client portal ("web mode", see below), so every API path is relative.
-import { VIDEO_APPROVERS, VIDEO_DELIVERABLES, VIDEO_FORMATS, VIDEO_HANDOFFS, DELIVERABLE_STATUS, ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
+import { ITEMS as ITEM_DEFS, VIDEO_APPROVERS, VIDEO_DELIVERABLES, VIDEO_FORMATS, VIDEO_HANDOFFS, DELIVERABLE_STATUS, ASSETS, ASSET_STATUS, ITEM_STATUS, LAUNCH_STATUS, PHASES, ROLES, ROLE_INFO, RUBRIC, workload, STAGES, TIERS, VERDICT, addDays, assetsFor, checks, daysBetween, effectiveTier, fmtDate, itemsFor, progress, readiness, tLabel, tierOf, tierScore, tierFromScore, today, validDate } from "./model.mjs";
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -313,6 +313,7 @@ function viewChecklist() {
 		<select data-filter="phase"><option value="">All phases</option>${opt(PHASES.map((x) => [x.id, x.label]), f.phase)}</select>
 		<select data-filter="who">${opt(whoOpts, f.who)}</select>
 		<input data-filter="q" placeholder="Search" value="${esc(f.q)}" style="width:180px">
+		<button data-act="newItem">+ Add item</button>
 	</div>
 	<datalist id="owners">${[...owners, ...ROLES].map((o) => `<option value="${esc(o)}">`).join("")}</datalist>
 	${PHASES.map((ph) => {
@@ -323,17 +324,22 @@ function viewChecklist() {
 		return `<div class="phase"><div class="phase-head"><h3>${esc(ph.label)} <small>${esc(ph.window)}</small></h3><div class="bar"><i style="width:${(100 * done) / all.length}%"></i></div><span class="mono muted">${done}/${all.length}</span></div>
 		${its.map(itemRow).join("")}</div>`;
 	}).join("") || `<div class="empty"><b>Nothing matches</b>Change the filters above.</div>`}
-	<div class="card"><h3>Add an item</h3><div class="row"><input id="newText" placeholder="Something this launch needs that the checklist doesn't cover" style="flex:1;min-width:240px"><select id="newPhase" style="width:auto">${opt(PHASES.map((x) => [x.id, x.label]), "build")}</select><select id="newRole" style="width:auto">${opt(ROLES.map((r) => [r, r]), "DRI")}</select><input id="newDue" type="number" value="-5" title="Days from T-0" style="width:80px"><button data-act="addItem">Add</button></div></div>`;
+	<div class="card"><h3>Add an item</h3><div class="row"><input id="newText" placeholder="Something this launch needs that the checklist doesn't cover" style="flex:1;min-width:240px"><select id="newPhase" style="width:auto">${opt(PHASES.map((x) => [x.id, x.label]), "build")}</select><select id="newRole" style="width:auto">${opt(ROLES.map((r) => [r, r]), "DRI")}</select><input id="newDue" type="number" value="-5" title="Days from T-0" style="width:80px"><button data-act="addItem">Add</button></div></div>
+	${removedItems(l).length ? `<div class="card"><h3>Removed from this launch <small>${removedItems(l).length}</small></h3><table class="tbl"><tbody>${removedItems(l).map((i) => `<tr><td>${esc(l.items[i.id].text || i.text)}</td><td class="mono muted">${esc(phaseName(i.phase))}</td><td style="text-align:right"><button class="sm" data-act="restoreItem" data-id="${i.id}">Restore</button></td></tr>`).join("")}</tbody></table></div>` : ""}`;
 }
+// Default items removed from this launch (they can be restored), for the current tier.
+const removedItems = (l) => ITEM_DEFS.filter((i) => l.items[i.id]?.removed && i.tiers.includes(effectiveTier(l)));
+const phaseName = (id) => PHASES.find((p) => p.id === id)?.label ?? id;
+
 function itemRow(i) {
 	const d = daysBetween(S.launch.t0, i.due);
 	return `<div class="item st-${i.status} ${i.overdue ? "late" : ""}" id="it-${i.id}">
 		<select class="stsel" data-v="${i.status}" data-item="${i.id}" data-f="status" data-rerender>${opt(ITEM_STATUS, i.status)}</select>
-		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : ""}<small>${esc(i.role)}${i.person && !i.owner ? ` → ${esc(i.person.name)}` : ""} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.issue ? ` · <a href="${esc(i.issue.url)}" target="_blank" rel="noopener">${esc(i.issue.identifier || "Linear")}</a>` : ""}</small></div>
+		<div class="txt"><span class="t">${esc(i.text)}</span>${i.gate ? '<span class="badge">GATE</span>' : ""}${i.custom ? '<span class="badge">custom</span>' : i.edited ? '<span class="badge">edited</span>' : ""}<small>${esc(i.role)}${i.person && !i.owner ? ` → ${esc(i.person.name)}` : ""} · ${tLabel(d)}${i.due !== i.planned ? " · moved" : ""}${i.issue ? ` · <a href="${esc(i.issue.url)}" target="_blank" rel="noopener">${esc(i.issue.identifier || "Linear")}</a>` : ""}</small></div>
 		<input list="owners" data-item="${i.id}" data-f="owner" value="${esc(i.owner)}" placeholder="${esc(i.person?.name || i.role)}" title="Leave blank to use whoever is staffed on ${esc(i.role)}">
 		<input type="date" class="due ${i.overdue ? "late" : ""}" data-item="${i.id}" data-f="due" data-rerender value="${esc(i.due)}">
 		<input class="ev" data-item="${i.id}" data-f="evidence" value="${esc(i.evidence)}" placeholder="Evidence link (optional)">
-		<button class="ghost sm more" data-act="note" data-id="${i.id}" title="Note${i.status === "waived" ? " (waiver reason)" : ""}">${i.note ? "✎" : "…"}</button>
+		<span class="item-acts"><button class="ghost sm" data-act="editItem" data-id="${i.id}" title="Edit or delete this item">Edit</button><button class="ghost sm more" data-act="note" data-id="${i.id}" title="Note${i.status === "waived" ? " (waiver reason)" : ""}">${i.note ? "✎" : "…"}</button></span>
 		${S.notes.has(i.id) || (i.status === "waived" && !i.note) ? `<textarea class="note" rows="2" data-item="${i.id}" data-f="note" placeholder="${i.status === "waived" ? "Why the DRI waived this" : "Note"}">${esc(i.note)}</textarea>` : ""}
 	</div>`;
 }
@@ -830,6 +836,52 @@ const ACT = {
 		S.launch.message.status = "draft";
 		markDirty();
 		render();
+	},
+	newItem: () => {
+		const el = $("#newText");
+		el.scrollIntoView({ behavior: "smooth", block: "center" });
+		el.focus();
+	},
+	editItem: (el) => {
+		const i = itemsFor(S.launch).find((x) => x.id === el.dataset.id);
+		if (!i) return;
+		const offset = i.custom ? S.launch.custom.find((c) => c.id === i.id).due : null;
+		const del = i.gate
+			? `<p class="hint">This is a go/no-go gate, so it can't be deleted. Waive it with a reason instead.</p>`
+			: `<p class="hint">${i.custom ? "Delete removes this item for good." : "Delete removes it from this launch; you can restore it from the bottom of the checklist."}${i.issue ? ` Its Linear issue (${esc(i.issue.identifier || "linked")}) stays in Linear.` : ""}</p>`;
+		dialog(`<h2>Edit item</h2>
+			${field("Item", `<textarea name="text" rows="3" required>${esc(i.text)}</textarea>`)}
+			<div class="grid2">${field("Phase", `<select name="phase">${opt(PHASES.map((x) => [x.id, x.label]), i.phase)}</select>`)}${field("Role", `<select name="role">${opt(ROLES.map((r) => [r, r]), i.role)}</select>`)}</div>
+			${i.custom ? field("Planned due <em>days from T-0</em>", `<input name="offset" type="number" value="${offset}">`) : !i.custom && i.edited ? `<p class="hint">Default: “${esc(i.def.text)}” · ${esc(phaseName(i.def.phase))} · ${esc(i.def.role)}. <button class="sm" value="reset" formnovalidate>Reset to default</button></p>` : ""}
+			${del}
+			<div class="actions"><button class="danger" value="delete" formnovalidate${i.gate ? " disabled" : ""}>Delete</button><span style="flex:1"></span><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>`, async (fd, v) => {
+			const l = S.launch;
+			if (v === "reset") {
+				for (const k of ["text", "phase", "role"]) delete S.launch.items[i.id][k];
+			} else if (v === "delete") {
+				if (i.custom) {
+					l.custom = l.custom.filter((c) => c.id !== i.id);
+					delete l.items[i.id];
+				} else (l.items[i.id] ??= { status: "todo", owner: "", due: "", evidence: "", note: "" }).removed = true;
+				toast(i.custom ? "Item deleted." : "Item removed. Restore it from the bottom of the checklist.");
+			} else {
+				const text = String(fd.get("text")).trim().slice(0, 400);
+				if (!text) throw new Error("The item needs some text.");
+				if (i.custom) Object.assign(l.custom.find((c) => c.id === i.id), { text, phase: fd.get("phase"), role: fd.get("role"), due: Number.parseInt(fd.get("offset"), 10) || 0 });
+				else {
+					const st = (l.items[i.id] ??= { status: "todo", owner: "", due: "", evidence: "", note: "" });
+					for (const [k, val] of [["text", text], ["phase", fd.get("phase")], ["role", fd.get("role")]]) val === i.def[k] ? delete st[k] : (st[k] = val);
+				}
+			}
+			markDirty();
+			render();
+		});
+	},
+	restoreItem: (el) => {
+		delete S.launch.items[el.dataset.id].removed;
+		markDirty();
+		render();
+		toast("Item restored.");
 	},
 	addItem: () => {
 		const text = $("#newText").value.trim();

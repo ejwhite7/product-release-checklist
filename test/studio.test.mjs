@@ -41,6 +41,19 @@ test("done counts without evidence", () => {
 	assert.ok(!checks(l).some((c) => c.item === "tier"));
 });
 
+test("default items can be reworded, moved and removed; gates can't be removed", () => {
+	const { launch: l } = normalize({ id: "l_edit", name: "X", t0: "2026-11-17", tier: { override: 1 }, items: { tier: { text: "Agree the tier", role: "PM", phase: "build", status: "todo" }, "war-room": { removed: true }, "message-house": { removed: true }, kb: { removed: "yes", role: "NOPE" } } });
+	const by = Object.fromEntries(itemsFor(l).map((i) => [i.id, i]));
+	assert.deepEqual([by.tier.text, by.tier.role, by.tier.phase, by.tier.edited], ["Agree the tier", "PM", "build", true]);
+	assert.equal(by.tier.def.text, ITEMS.find((i) => i.id === "tier").text, "the default is kept");
+	assert.ok(!by["war-room"], "removed");
+	const gate = ITEMS.find((i) => i.gate === true || i.gate === 1);
+	l.items[gate.id] = { status: "todo", owner: "", due: "", evidence: "", note: "", removed: true };
+	assert.ok(itemsFor(l).some((i) => i.id === gate.id), "a gate stays even when marked removed");
+	assert.ok(by.kb && by.kb.role === ITEMS.find((i) => i.id === "kb").role, "invalid edits are ignored");
+	assert.equal(progress(l).total, itemsFor(l).filter((i) => i.status !== "na").length);
+});
+
 test("readiness gates: NO-GO until gates, items and red-team blockers clear", () => {
 	const { launch: l } = normalize({ id: "l_test", name: "X", t0: "2026-11-17", tier: { override: 3 }, rollout: { full: true } });
 	assert.equal(readiness(l).verdict, "no-go");
