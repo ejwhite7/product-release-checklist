@@ -17,7 +17,7 @@ The studio runs at http://127.0.0.1:4730. It needs Node 20+ and has no npm depen
 | **Overview** | Tier, countdown, % done, overdue items, go/no-go verdict, and a T-30 → T+30 timeline of every item |
 | **Brief & tier** | What ships, who it's for, the job, eligibility, pricing, rollout, and the 5-factor tier scorer (T1/T2/T3, with override + reason). Delete the launch from the bottom. |
 | **Staffing** | Team roster (name, email, title, capacity), a role → person matrix for the roles this tier needs, per-person workload with peak week, and Linear sync status. Items inherit their owner from the role. |
-| **Checklist** | ~73 items in 7 phases, filtered to the tier, with due dates counting back from T-0. Owner, optional evidence link, waive with a reason. |
+| **Checklist** | ~73 items in 7 phases, filtered to the tier, with due dates counting back from T-0. Add, edit or delete items (default items can be restored; gates can only be waived). Owner, optional evidence link, waive with a reason. |
 | **Video** | The launch video as a workstream: brief → script → UI freeze → production → review → master → cutdowns → hand-off → launch → performance. Concept (format, hook, talent, music, tools), script, review rounds with timestamped notes, PMM/Founder/Legal sign-off, rights, deliverables (hero, vertical, square, in-app loop, paid cuts, captions) and a hand-off packet per team. The approved hero cut is a go/no-go gate for T1/T2. |
 | **Messaging** | Message house: one-liner, pillars + proof, objections, limits, CTAs per audience. Approve it to unlock assets. |
 | **Assets** | 19 launch assets (founder post → support pack), each with a spec, status, owner and a Markdown draft |

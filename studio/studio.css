@@ -129,7 +129,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .phase-head h3 { margin: 0; }
 .bar { flex: 1; max-width: 220px; height: 6px; background: var(--line); position: relative; }
 .bar i { position: absolute; inset: 0 auto 0 0; background: var(--good); }
-.item { display: grid; grid-template-columns: 112px 1fr 130px 132px 1fr 28px; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.item { display: grid; grid-template-columns: 112px 1fr 130px 132px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
 .item.late { background: linear-gradient(90deg, color-mix(in srgb, var(--error) 8%, transparent), transparent 60%); }
 .item.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
@@ -144,6 +144,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .stsel[data-v="waived"] { color: var(--warn); border-color: var(--warn); }
 .item .due.late { color: var(--error); border-color: var(--error); }
 .item .note { grid-column: 2 / -1; }
+.item .item-acts { display: flex; gap: 2px; justify-content: flex-end; }
 .badge { font-family: var(--mono); font-size: 10.5px; padding: 0 6px; border: 1px solid var(--fg); margin-left: 6px; vertical-align: 1px; }
 .badge.claude { border-color: var(--claude); color: var(--claude); }
 

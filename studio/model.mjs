@@ -255,6 +255,13 @@ export function normalize(raw) {
 	for (const [k, v] of Object.entries(rawItems)) {
 		if (!itemById[k] && !arr(r.custom).some((c) => c.id === k)) continue;
 		items[k] = { status: oneOf(v?.status, ITEM_STATUS, "todo"), owner: str(v?.owner, 120), due: validDate(v?.due) ? v.due : "", evidence: str(v?.evidence, 2000), note: str(v?.note, 4000) };
+		// A default item can be reworded, moved to another phase or role, or removed from this launch.
+		if (itemById[k]) {
+			if (str(v?.text, 400).trim()) items[k].text = str(v.text, 400).trim();
+			if (ROLES.includes(v?.role)) items[k].role = v.role;
+			if (PHASES.some((p) => p.id === v?.phase)) items[k].phase = v.phase;
+			if (v?.removed === true) items[k].removed = true;
+		}
 	}
 	const assets = {};
 	for (const [k, v] of Object.entries(r.assets ?? {})) {
@@ -399,15 +406,17 @@ export function itemsFor(l) {
 	const tier = effectiveTier(l);
 	const custom = l.custom.map((c) => ({ ...c, tiers: [1, 2, 3], custom: true }));
 	return [...ITEMS, ...custom]
-		.filter((i) => i.tiers.includes(tier))
+		// Gates can't be removed: waive them instead, with a reason.
+		.filter((i) => i.tiers.includes(tier) && !(l.items[i.id]?.removed && !(i.gate === true || (i.gate === 1 && tier === 1))))
 		.map((i) => {
 			const st = l.items[i.id] ?? { status: "todo", owner: "", due: "", evidence: "", note: "" };
 			const planned = weekday(addDays(l.t0, i.due), i.due > 0);
 			const due = st.due || planned;
 			const open = !["done", "waived", "na"].includes(st.status);
 			const gate = i.gate === true || (i.gate === 1 && tier === 1);
-			const person = ownerOf(l, i.role, st.owner);
-			return { ...i, ...st, def: i, gate, planned, due, open, overdue: open && due < today(), person, ownerName: person?.name || st.owner || "", issue: l.sync.linear.issues[i.id] ?? null };
+			const person = ownerOf(l, st.role || i.role, st.owner);
+			const { removed, ...edits } = st;
+			return { ...i, ...edits, def: i, edited: !!(st.text || st.role || st.phase), gate, planned, due, open, overdue: open && due < today(), person, ownerName: person?.name || st.owner || "", issue: l.sync.linear.issues[i.id] ?? null };
 		})
 		.sort((a, b) => PHASES.findIndex((p) => p.id === a.phase) - PHASES.findIndex((p) => p.id === b.phase) || a.due.localeCompare(b.due));
 }

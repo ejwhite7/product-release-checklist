@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.0
+- Checklist items are fully editable: **Edit** on any item changes its text, phase and role, or deletes it. Default items you delete can be restored from the bottom of the checklist; go/no-go gates can be waived but not deleted. **+ Add item** sits at the top of the checklist.
+
 ## 0.6.1
 - The studio checks for changes as soon as its tab is back in view, so a sync or Claude's work that finished in the background shows up right away.
 
