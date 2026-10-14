@@ -1028,4 +1028,7 @@ window.addEventListener("beforeunload", () => S.dirty && save());
 	await loadList();
 	await route();
 	setInterval(poll, 1500);
+	// Browsers slow timers in background tabs, so check again as soon as the tab is back (say, after closing issues in Linear).
+	document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && poll());
+	window.addEventListener("focus", () => poll());
 })();
