@@ -150,7 +150,6 @@ export function linearPayload(l, { studioUrl = "" } = {}) {
 			i.note ? `**Note:** ${i.note}` : "",
 			`**Done:** close this issue. Closing it ticks the task off in the release checklist.`,
 			l.message.oneLiner ? `> ${l.message.oneLiner}` : "",
-			studioUrl ? `_Synced from the GrowthCast release checklist (${studioUrl})._` : "_Synced from the GrowthCast release checklist._",
 		]
 			.filter(Boolean)
 			.join("\n\n");
