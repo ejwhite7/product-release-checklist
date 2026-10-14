@@ -48,7 +48,7 @@ const VIEW_ACTS = new Set(["show", "note", "teamPlan", "openScript"]);
 // Launches that can collide with this one: in the portal, only those in the same client project.
 const sameProject = (l) => (WEB() ? S.launches.filter((x) => x.project?.id === l.project?.id) : S.launches);
 const projectName = (id) => S.settings.projects?.find((p) => p.id === id)?.name ?? "";
-const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" }, project: "" };
+const S = { launches: [], launch: null, version: null, tab: store.get("prc-tab", "overview"), portfolio: false, dirty: false, saving: false, request: null, settings: {}, assetSel: null, picked: new Set(), notes: new Set(), f: { phase: "", who: "", show: "all", q: "" }, project: "", linear: null };
 
 // --- Data ---
 async function api(path, opts = {}) {
@@ -112,7 +112,7 @@ async function poll() {
 			if (body.version && body.version !== S.version) {
 				await open(S.launch.id);
 				await loadList();
-				toast(S.request?.deliveredAt || S.request?.status === "running" ? "Claude updated the launch." : "The launch was updated.");
+				toast(S.request?.kind === "sync" && S.request.status !== "failed" ? "Synced with Linear." : S.request?.deliveredAt || S.request?.status === "running" ? "Claude updated the launch." : "The launch was updated.");
 				render();
 			}
 		}
@@ -197,7 +197,8 @@ function renderAsk() {
 	const label = ASK[r.kind] ?? (r.kind === "share" ? "Publish share link" : r.kind);
 	if (WEB()) {
 		el.className = `ask-state ${r.status === "running" ? "queued" : r.status === "done" ? "got" : "failed"}`;
-		el.innerHTML = r.status === "running" ? `<b>Claude is working on “${esc(label)}”.</b> Changes appear here when it's done, usually within a couple of minutes.` : r.status === "done" ? `<b>Claude finished “${esc(label)}”.</b> ${esc(r.summary ?? "")} <button class="sm" data-ask-clear>Dismiss</button>` : `<b>“${esc(label)}” didn't finish.</b> ${esc(r.error || "Try again.")} <button class="sm" data-ask-clear>Dismiss</button>`;
+		const sync = r.kind === "sync";
+		el.innerHTML = r.status === "running" ? (sync ? "<b>Syncing to Linear.</b> The project link and issue states appear here when it's done." : `<b>Claude is working on “${esc(label)}”.</b> Changes appear here when it's done, usually within a couple of minutes.`) : r.status === "done" ? `<b>${sync ? "Synced to Linear." : `Claude finished “${esc(label)}”.`}</b> ${esc(r.summary ?? "")} <button class="sm" data-ask-clear>Dismiss</button>` : `<b>“${esc(label)}” didn't finish.</b> ${esc(r.error || "Try again.")} <button class="sm" data-ask-clear>Dismiss</button>`;
 		return;
 	}
 	el.className = `ask-state ${r.deliveredAt ? "got" : "queued"}`;
@@ -337,6 +338,52 @@ function itemRow(i) {
 	</div>`;
 }
 
+// In the portal, Linear is connected per project through Composio: its Connect page, in a new tab, is where the person
+// signs in to Linear and picks the workspace. The sync then runs on the server.
+async function loadLinear(force) {
+	const pid = S.launch?.project?.id;
+	if (!WEB() || !pid || !S.settings.linear) return;
+	if (!force && S.linear?.projectId === pid) return;
+	const teams = S.linear?.projectId === pid ? S.linear.teams : null;
+	S.linear = { ...(await api(`api/linear?projectId=${encodeURIComponent(pid)}`)).body, teams };
+	if (S.linear.connected && !RO() && !teams) S.linear.teams = (await api(`api/linear/teams?projectId=${encodeURIComponent(pid)}`)).body;
+	if (S.tab === "staffing" && !S.portfolio) render();
+}
+let linearWait;
+function waitForLinear() {
+	clearInterval(linearWait);
+	const until = Date.now() + 10 * 60e3;
+	linearWait = setInterval(async () => {
+		if (Date.now() > until || !S.linear?.pending) return clearInterval(linearWait);
+		await loadLinear(true).catch(() => {});
+		if (S.linear?.connected) toast(`Linear connected: ${S.linear.workspace}.`);
+	}, 3000);
+}
+function linearCard(l) {
+	if (!S.settings.linear) return "";
+	const ln = l.sync.linear;
+	const c = S.linear;
+	const open = ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : "";
+	let body;
+	if (!c || c.projectId !== l.project?.id) {
+		setTimeout(() => loadLinear().catch((e) => toast(e.message)));
+		body = '<p class="hint">Checking Linear…</p>';
+	} else if (RO()) body = open ? `<div class="row">${open}</div>` : `<p class="hint">This launch isn't in Linear yet.</p>`;
+	else if (c.pending)
+		body = c.link
+			? `<p class="hint">Your browser blocked the new tab. Open Composio, sign in to Linear and choose the workspace, then come back here.</p><div class="row"><a class="btnlink" id="linearLink" href="${esc(c.link)}" target="_blank" rel="noopener">Open Composio ↗</a><button data-act="linearCheck">Check again</button><button data-act="linearDisconnect">Cancel</button></div>`
+			: '<p class="hint">Waiting for Linear. Finish in the Composio tab that opened (sign in to Linear and choose the workspace), then come back here.</p><div class="row"><button data-act="linearCheck">Check again</button><button data-act="linearConnect">Open the link again</button><button data-act="linearDisconnect">Cancel</button></div>';
+	else if (!c.connected)
+		body = `<p class="hint">Connect this project's Linear workspace. Composio opens in a new tab: sign in to Linear and choose the workspace. Then anyone at GrowthCast on ${esc(l.project?.name || projectName(l.project?.id) || "this project")} can sync its launches.</p><div class="row"><button class="primary" data-act="linearConnect">Connect Linear</button></div>`;
+	else {
+		const teams = [...(c.teams ?? [])];
+		if (ln.teamId && !teams.some((t) => t.id === ln.teamId)) teams.unshift({ id: ln.teamId, name: ln.teamName || "Current team" });
+		body = `<p class="hint">Sync creates a Linear project for this launch, with a milestone per phase and one issue per open task, assigned to its owner by email, with the due date. Re-syncing updates those issues instead of duplicating them, and issues closed in Linear tick off here.</p>
+		<div class="row"><select data-act-change="linearTeam"${ln.projectId ? " disabled" : ""}>${opt([["", "Choose a Linear team…"], ...teams.map((t) => [t.id, t.name])], ln.teamId)}</select><button class="primary" data-act="linearSync"${ln.teamId ? "" : " disabled"}>${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button>${open}<button data-act="linearDisconnect">Disconnect</button></div>`;
+	}
+	return `<div class="card"><h3 style="margin-top:0">Linear <small>${c?.connected ? `${esc(c.workspace)}${c.by ? ` · connected by ${esc(c.by)}` : ""}` : c?.pending ? "connecting" : "not connected"}</small></h3>${body}</div>`;
+}
+
 function viewStaffing() {
 	const l = S.launch;
 	const w = workload(l);
@@ -344,7 +391,7 @@ function viewStaffing() {
 	const max = Math.max(1, ...w.people.map((p) => p.open));
 	const peopleOpts = (sel) => `<option value="">Unstaffed</option>${l.people.map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}`;
 	return `<h2>Staffing <small>who owns each role, and what that puts on their plate</small></h2>
-	<p class="lede">Staff a role and every checklist item for it gets that person as owner, unless an item names someone else. ${WEB() ? "The team plan and the tasks CSV assign tasks from this." : "The team plan and the Linear sync assign tasks from this. Emails must match their Linear account."}</p>
+	<p class="lede">Staff a role and every checklist item for it gets that person as owner, unless an item names someone else. ${WEB() && !S.settings.linear ? "The team plan and the tasks CSV assign tasks from this." : "The team plan and the Linear sync assign tasks from this. Emails must match their Linear account."}</p>
 	<div class="card"><h3 style="margin-top:0">Team <small>${l.people.length} people</small></h3>
 		<table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Capacity</th><th>Roles</th><th>Open</th>${WEB() ? "" : "<th>Linear</th>"}<th></th></tr></thead><tbody>
 		${l.people.map((p, i) => { const x = w.people.find((y) => y.id === p.id); return `<tr><td>${inp(`people.${i}.name`, "Name")}</td><td>${inp(`people.${i}.email`, "name@company.com", 'type="email"')}</td><td>${inp(`people.${i}.title`, "Title")}</td><td style="width:90px">${inp(`people.${i}.capacity`, "e.g. 50%")}</td><td class="mono">${esc(x.roles.join(", ")) || "—"}</td><td class="mono">${x.open}${x.overdue ? ` <span class="v-no-go">(${x.overdue} late)</span>` : ""}</td>${WEB() ? "" : `<td class="mono">${p.linearUserId ? "✓ matched" : "—"}</td>`}<td><button class="ghost sm" data-act="rmPerson" data-id="${p.id}" title="Remove">✕</button></td></tr>`; }).join("")}
@@ -359,7 +406,7 @@ function viewStaffing() {
 			${w.unassigned.length ? `<p class="small" style="margin-top:12px"><a href="#" data-who="unassigned" class="v-no-go">${w.unassigned.length} items have no owner →</a></p>` : ""}
 		</div>
 	</div>
-	${WEB() ? `<div class="card"><h3 style="margin-top:0">Team launch plan</h3><p class="hint">Goals, milestones, roles and each person's tasks with due dates, to present to the team. Everyone on this portal project can open it.</p><div class="row"><button class="primary" data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div></div>` : `<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
+	${WEB() ? `${linearCard(l)}<div class="card"><h3 style="margin-top:0">Team launch plan</h3><p class="hint">Goals, milestones, roles and each person's tasks with due dates, to present to the team. Everyone on this portal project can open it.</p><div class="row"><button class="primary" data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div></div>` : `<div class="card"><h3 style="margin-top:0">Linear <small>${ln.projectId ? `project linked · ${Object.keys(ln.issues).length} issues${ln.syncedAt ? ` · synced ${esc(ln.syncedAt.slice(0, 16).replace("T", " "))}` : ""}${ln.pulledAt ? ` · states pulled ${esc(ln.pulledAt.slice(0, 16).replace("T", " "))}` : ""}` : "not synced yet"}</small></h3>
 		<p class="hint">Sync creates a Linear project for this launch (via Composio), with a milestone per phase and one issue per open task, assigned to its owner, with the due date. Re-syncing updates existing issues instead of duplicating them, and issues closed in Linear tick off here, with the issue as evidence.</p>
 		<div class="row">${ln.projectUrl ? `<a class="btnlink" href="${esc(ln.projectUrl)}" target="_blank" rel="noopener">Open in Linear${ln.teamName ? ` (${esc(ln.teamName)})` : ""} ↗</a>` : ""}<button class="primary" data-ask="sync">${ln.projectId ? "Re-sync to Linear" : "Sync to Linear"}</button><button data-act="teamPlan">Open team launch plan</button><a class="btnlink" href="api/launches/${l.id}/tasks.csv">Download tasks CSV</a></div>
 	</div>`}`;
@@ -691,6 +738,43 @@ function goto(itemId, area) {
 }
 const ACT = {
 	new: newLaunchDialog,
+	linearConnect: async () => {
+		// Open the tab now, while this is still the click: browsers block a window opened after the request returns.
+		const w = window.open("", "_blank");
+		try {
+			const { body } = await post("api/linear/connect", { projectId: S.launch.project.id });
+			if (w) {
+				w.opener = null;
+				w.location.href = body.url;
+			}
+			// If the browser blocked the tab, the card offers the link instead.
+			S.linear = { ...S.linear, pending: true, connected: false, link: w ? "" : body.url };
+			render();
+			waitForLinear();
+		} catch (e) {
+			w?.close();
+			toast(e.message);
+		}
+	},
+	linearCheck: () => loadLinear(true).catch((e) => toast(e.message)),
+	linearDisconnect: () =>
+		dialog(`<h2>Disconnect Linear?</h2><p class="hint">Launches in ${esc(S.launch.project?.name || projectName(S.launch.project?.id) || "this project")} stop syncing. Issues already in Linear stay there. You can connect again, to the same workspace or another.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="danger" value="ok">Disconnect</button></div>`, async () => {
+			clearInterval(linearWait);
+			S.linear = { ...(await api(`api/linear?projectId=${encodeURIComponent(S.launch.project.id)}`, { method: "DELETE" })).body, teams: null };
+			render();
+		}),
+	linearSync: async () => {
+		await save();
+		const ln = S.launch.sync.linear;
+		const go = async () => {
+			S.request = (await post("api/request", { kind: "sync", launchId: S.launch.id })).body;
+			renderAsk();
+			toast("Syncing to Linear. The results appear here when it's done.");
+		};
+		if (ln.projectId) return go().catch((e) => toast(e.message));
+		const open = itemsFor(S.launch).filter((i) => i.open).length;
+		dialog(`<h2>Sync “${esc(S.launch.name)}” to Linear?</h2><p class="hint">This creates the project “Launch: ${esc(S.launch.name)}” in ${esc(ln.teamName || "the team")}, with ${open} issues, one per open task. People staffed on the launch get their tasks if their email matches an active member of the team, and Linear notifies them.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Sync</button></div>`, go);
+	},
 	deleteLaunch: () => {
 		const l = S.launch;
 		dialog(`<h2>Delete “${esc(l.name)}”?</h2><p class="hint">${WEB() ? "Everyone on the project loses access to this launch, its checklist and its plan." : "The launch file is removed from this folder."} You can't undo this from the studio.</p><div class="actions"><button value="cancel" formnovalidate>Cancel</button><button class="danger" value="ok">Delete launch</button></div>`, async () => {
@@ -869,6 +953,11 @@ function onField(e, commit) {
 		S.f[el.dataset.filter] = val;
 		if (commit || el.tagName === "SELECT") render();
 		return;
+	} else if (el.dataset.actChange === "linearTeam") {
+		const t = S.linear?.teams?.find((x) => x.id === val);
+		Object.assign(S.launch.sync.linear, { teamId: val, teamName: t?.name ?? "" });
+		markDirty();
+		return render();
 	} else if (el.dataset.actChange === "override") {
 		S.launch.tier.override = val ? Number(val) : null;
 		markDirty();

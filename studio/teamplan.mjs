@@ -148,7 +148,7 @@ export function linearPayload(l, { studioUrl = "" } = {}) {
 			i.gate ? "**Go/no-go gate.** The launch can't go ahead until this is done." : "",
 			assetFor[i.id] ? `**Deliverable:** ${assetFor[i.id].label}. ${assetFor[i.id].spec}` : "",
 			i.note ? `**Note:** ${i.note}` : "",
-			`**Done means:** attach a link (doc, PR, dashboard, live URL) as evidence, then close this issue.`,
+			`**Done:** close this issue. Closing it ticks the task off in the release checklist.`,
 			l.message.oneLiner ? `> ${l.message.oneLiner}` : "",
 			studioUrl ? `_Synced from the GrowthCast release checklist (${studioUrl})._` : "_Synced from the GrowthCast release checklist._",
 		]
