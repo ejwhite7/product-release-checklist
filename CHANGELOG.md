@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+- New checklist items: an optional pre-launch teaser motion graphic (T-4), a teaser post scheduled for T-2, and handing product marketing, launch video and vertical-specific assets off to paid.
+- Paid runs for T1 and T2 launches: audiences, creative, budget, search, the paid video cuts and the paid hand-off.
+- Paid audiences are prospects, warm engagers, users and churned, excluding users who have adopted the feature.
+- The T-0 paid item is now a launch campaign with one ad set per audience and a custom-conversion objective on the first step of feature usage. It replaces "Paid flights live" and keeps the announcement video boost to warm engagers.
+
 ## 0.7.0
 - Checklist items are fully editable: **Edit** on any item changes its text, phase and role, or deletes it. Default items you delete can be restored from the bottom of the checklist; go/no-go gates can be waived but not deleted. **+ Add item** sits at the top of the checklist.
 

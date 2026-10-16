@@ -43,7 +43,7 @@ export const RUBRIC = [
 ];
 export const TIERS = {
 	1: { label: "T1 Flagship", short: "T1", desc: "Full stack, founder-led. At most one every ~6 weeks." },
-	2: { label: "T2 Notable", short: "T2", desc: "Owned channels, in-app, lifecycle, docs, light social. Paid only with an acquisition story." },
+	2: { label: "T2 Notable", short: "T2", desc: "Owned channels, in-app, lifecycle, docs, light social, paid launch campaign." },
 	3: { label: "T3 Minor", short: "T3", desc: "Changelog, KB, tooltip, support note. Roll into a monthly “What's new”." },
 };
 export const tierFromScore = (s) => (s >= 11 ? 1 : s >= 6 ? 2 : 3);
@@ -63,7 +63,7 @@ export const ASSETS = [
 	{ id: "kb-article", label: "Knowledge base article", tiers: [1, 2, 3], role: "SUPPORT", item: "kb", spec: "“How to…” title. Eligibility first, numbered steps with [SCREENSHOT] markers, troubleshooting, limitations. One task per article so the AI support bot can answer from it." },
 	{ id: "youtube-tutorial", label: "YouTube tutorial", tiers: [1, 2], role: "CONTENT", item: "youtube", spec: "Search-intent title, chapters, a script with on-screen actions, a description with links, a pinned comment." },
 	{ id: "webinar", label: "Webinar deep-dive", tiers: [1], role: "PMM", item: "webinar", spec: "Title, 45-minute agenda (story, live demo, Q&A), registration page copy, 3 reminder emails." },
-	{ id: "paid-ads", label: "Paid ads by audience", tiers: [1], role: "PAID", item: "paid-creative", spec: "Per audience (prospects / non-adopting customers / churned): 3 hooks, 2 primary texts, headline, description, CTA, creative concept, format, exclusions. Boost the announcement video to warm audiences first." },
+	{ id: "paid-ads", label: "Paid ads by audience", tiers: [1, 2], role: "PAID", item: "paid-creative", spec: "Per audience (prospects / warm engagers / users / churned, excluding users who have adopted the feature): 3 hooks, 2 primary texts, headline, description, CTA, creative concept, format, exclusions. Boost the announcement video to warm audiences first." },
 	{ id: "lifecycle", label: "Lifecycle emails", tiers: [1, 2], role: "LIFECYCLE", item: "email-announce", spec: "Announcement email (3 subject lines, preheader, body, CTA). Non-adopter sequence at D+3/D+10/D+21 (use case → proof → friction removal), each exiting on activation. Upgrade nudge. Winback (T1)." },
 	{ id: "app-store", label: "App store & push copy", tiers: [1, 2], role: "PM", item: "mobile", spec: "“What's New” (first line ≤170 characters) and push notification copy (title ≤40 characters)." },
 	{ id: "support-pack", label: "Support pack", tiers: [1, 2, 3], role: "PMM", item: "support-pack", spec: "2-sentence positioning, eligibility, top 10 FAQ, known limitations and workarounds, 3 macros, escalation path, ticket tag." },
@@ -78,14 +78,14 @@ export const VIDEO_DELIVERABLES = [
 	{ id: "vertical", label: "Vertical", spec: "9:16 · 30–45s · UI inside safe zones", use: "TikTok, Reels, Shorts, founder and employee social", tiers: [1, 2] },
 	{ id: "square", label: "Square", spec: "1:1 · 30s", use: "LinkedIn, X and Facebook feeds", tiers: [1] },
 	{ id: "loop", label: "In-app / KB loop", spec: "Silent · 10–20s · MP4 + GIF fallback", use: "In-app modal, KB article, changelog", tiers: [1, 2] },
-	{ id: "ads", label: "Paid cuts", spec: "6s, 15s, 30s · 3 hook variants · 9:16, 1:1, 4:5", use: "Meta, TikTok and YouTube ads", tiers: [1] },
+	{ id: "ads", label: "Paid cuts", spec: "6s, 15s, 30s · 3 hook variants · 9:16, 1:1, 4:5", use: "Meta, TikTok and YouTube ads", tiers: [1, 2] },
 	{ id: "captions", label: "Captions & thumbnails", spec: "SRT per cut and language · 2 thumbnail options", use: "Every upload", tiers: [1, 2] },
 ];
 export const VIDEO_APPROVERS = [["PMM", "Message and claims match the message house"], ["FOUNDER", "Voice and narrative"], ["LEGAL", "Claims, music and talent rights"]];
 export const VIDEO_HANDOFFS = [
 	{ id: "social", role: "SOCIAL", label: "Social & founder", what: "Vertical and square files, captions, post copy per platform, posting order for T-0", tiers: [1, 2] },
 	{ id: "employee", role: "SOCIAL", label: "Employee advocacy", what: "Download link and pre-written posts added to the advocacy kit", tiers: [1] },
-	{ id: "paid", role: "PAID", label: "Paid media", what: "Ad cuts to spec, hook variants, proof that music and talent are cleared for paid, UTMs", tiers: [1] },
+	{ id: "paid", role: "PAID", label: "Paid media", what: "Ad cuts to spec, hook variants, proof that music and talent are cleared for paid, UTMs", tiers: [1, 2] },
 	{ id: "web", role: "WEB", label: "Website", what: "Hero embed and poster frame for the landing page and announcement post", tiers: [1, 2] },
 	{ id: "support", role: "SUPPORT", label: "Support / KB", what: "Loop and hero link embedded in the KB article; cross-link from the YouTube tutorial", tiers: [1, 2] },
 	{ id: "cs", role: "CS", label: "Customer success", what: "Hero link and a one-line intro for key-account outreach", tiers: [1, 2] },
@@ -122,6 +122,9 @@ export const ITEMS = [
 	I("build", "video-final", [1, 2], "CONTENT", -5, "Video master approved and archived with project files and licenses", { gate: 1 }),
 	I("build", "video-cutdowns", [1, 2], "CONTENT", -4, "Video cutdowns and captions: vertical, square, in-app loop, paid cuts, SRT files, thumbnails"),
 	I("build", "video-handoff", [1, 2], "CONTENT", -3, "Video hand-off packet sent to social, paid, web, support and CS, each with files, captions and specs (Video tab)"),
+	I("build", "teaser-motion", [1, 2], "DESIGN", -4, "Pre-launch teaser motion graphic (optional)"),
+	I("build", "teaser-post", [1, 2], "SOCIAL", -2, "Teaser post scheduled to go out at T-2"),
+	I("build", "paid-handoff", [1, 2], "PMM", -3, "Product marketing, launch video and vertical-specific assets handed off to paid once created"),
 	I("build", "landing-page", [1, 2], "WEB", -5, "Feature landing page live-ready: indexable, target keyword, FAQ schema"),
 	I("build", "banner", [1, 2], "WEB", -5, "Marketing-site banner built, with an expiry date"),
 	I("build", "changelog", [1, 2, 3], "PM", -5, "Changelog entry written for users (curated, not raw release notes)"),
@@ -138,10 +141,10 @@ export const ITEMS = [
 	I("build", "youtube", [1, 2], "CONTENT", -5, "YouTube tutorial: search-titled, chaptered, linked from KB and in-app"),
 	I("build", "webinar", [1], "PMM", -5, "Webinar scheduled, registration opens at T-0"),
 	I("build", "localization", [1], "PMM", -5, "In-app, KB and lifecycle copy localized for supported languages"),
-	I("build", "audiences", [1, 2], "PAID", -5, "Paid audiences built (prospects, non-adopters, churned), checked for consent and suppression"),
-	I("build", "paid-creative", [1], "PAID", -5, "Paid creative per audience, plus the announcement video boost"),
-	I("build", "paid-budget", [1], "PAID", -5, "Budget, flights, kill criteria and UTM taxonomy agreed"),
-	I("build", "search", [1], "PAID", -5, "Search: brand + feature keywords, competitor gaps, sitelinks"),
+	I("build", "audiences", [1, 2], "PAID", -5, "Paid audiences built (prospects, warm engagers, users, churned), excluding users who have adopted the feature, checked for consent and suppression"),
+	I("build", "paid-creative", [1, 2], "PAID", -5, "Paid creative per audience, plus the announcement video boost"),
+	I("build", "paid-budget", [1, 2], "PAID", -5, "Budget, flights, kill criteria and UTM taxonomy agreed"),
+	I("build", "search", [1, 2], "PAID", -5, "Search: brand + feature keywords, competitor gaps, sitelinks"),
 	I("build", "email-announce", [1, 2], "LIFECYCLE", -5, "Announcement email to eligible users, holdout excluded"),
 	I("build", "nonadopter", [1, 2], "LIFECYCLE", -5, "Non-adopter sequence D+3 / D+10 / D+21, exits on activation"),
 	I("build", "upgrade-path", [1, 2], "LIFECYCLE", -5, "Upgrade nudge for ineligible-plan users who show intent"),
@@ -166,7 +169,7 @@ export const ITEMS = [
 	I("launch", "social-sequence", [1, 2], "SOCIAL", 0, "Founder post → company post → employee advocacy, within 60 minutes"),
 	I("launch", "publish-owned", [1, 2], "PMM", 0, "Announcement published; in-app and site banner on; email sent"),
 	I("launch", "publish-docs", [1, 2, 3], "PM", 0, "Changelog published; KB live; support pack posted to support"),
-	I("launch", "paid-live", [1], "PAID", 0, "Paid flights live; announcement video boosted to warm audiences first"),
+	I("launch", "paid-launch-campaign", [1, 2], "PAID", 0, "Launch campaign live with the launch ad creative, one ad set per audience: Prospects (all, minus engaged audiences and customers), Warm engagers (engaged audiences, minus users), Users (current users), Churned (former users), each excluding users who have adopted the feature. Objective: custom conversion on the first step of feature usage. Announcement video boosted to warm engagers first"),
 	I("launch", "war-room", [1, 2], "DRI", 0, "War room watching errors, support volume, social replies and the dashboard"),
 
 	I("amplify", "replies", [1, 2], "SOCIAL", 2, "Every comment on founder and company posts answered for 48 hours"),
@@ -465,7 +468,7 @@ export function checks(l, others = []) {
 		if (its["ui-freeze"]?.overdue && its["video-production"]?.open) add("error", "Video", "UI isn't frozen and production is due. The video will show unfinished UI or slip.", "ui-freeze");
 		const pending = VIDEO_APPROVERS.filter(([r]) => v.approvers[r].status !== "approved").map(([r]) => r);
 		if (its["video-review"] && today() >= its["video-review"].due && pending.length) add("warn", "Video", `Video sign-off still pending from ${pending.join(", ")}.`, "video-review");
-		if (tier === 1 && v.deliverables.ads.status !== "todo" && !v.rights.paid) add("error", "Video", "Paid cuts are in progress but music and talent aren't cleared for paid use.", "video-final");
+		if ((tier === 1 || tier === 2) && v.deliverables.ads.status !== "todo" && !v.rights.paid) add("error", "Video", "Paid cuts are in progress but music and talent aren't cleared for paid use.", "video-final");
 		if (days <= 5 && days >= 0 && !["ready", "live"].includes(v.deliverables.hero.status)) add("error", "Video", `Hero cut isn't ready ${days} days before launch.`, "video-final");
 	}
 	const w = workload(l);
