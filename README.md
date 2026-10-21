@@ -5,7 +5,7 @@ with a local studio where you work through each launch and ask Claude to do the 
 
 ## Install
 ```
-/plugin marketplace add ejwhite7/product-release-checklist
+/plugin marketplace add ejwhite7/growthcast-plugins
 /plugin install product-release-checklist@growthcast
 /product-release-checklist:open
 ```
